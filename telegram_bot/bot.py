@@ -7,7 +7,7 @@ from aiogram.enums import ParseMode
 
 from config import BOT_TOKEN
 from database import db
-from handlers import user, admin
+from handlers import user, admin, group
 from middlewares.throttling import ThrottlingMiddleware
 
 logging.basicConfig(level=logging.INFO, stream=sys.stdout)
@@ -30,6 +30,7 @@ async def main():
     
     dp.include_router(admin.router)
     dp.include_router(user.router)
+    dp.include_router(group.router)
     
     logging.info("Bot started!")
     await bot.delete_webhook(drop_pending_updates=True)

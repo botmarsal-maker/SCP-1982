@@ -38,3 +38,14 @@ def cancel_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="Batal", callback_data="cancel_action")]
     ])
+
+def see_post_keyboard(post_url: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔗 Lihat Postingan", url=post_url)]
+    ])
+
+def comment_notif_keyboard(post_url: str, comment_url: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="💬 Lihat Komentar", url=comment_url)],
+        [InlineKeyboardButton(text="🔗 Lihat Postingan", url=post_url)]
+    ])

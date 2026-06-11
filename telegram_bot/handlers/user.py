@@ -10,7 +10,10 @@ from database.cache import fs_cache
 
 router = Router()
 
-async def check_force_sub(user_id: int, bot) -> bool:
+import logging
+from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
+
+async def check_force_sub(user_id: int, bot, use_cache: bool = True) -> bool:
     fs_status = await db.get_setting("force_sub")
     if fs_status != "1":
         return True
@@ -20,22 +23,29 @@ async def check_force_sub(user_id: int, bot) -> bool:
         return True
         
     # Gunakan cache memori untuk durasi 10 menit guna mengurangi rate limit Telegram (Prioritas 7)
-    if fs_cache.is_cached_valid(user_id):
+    if use_cache and fs_cache.is_cached_valid(user_id):
         return True
         
     try:
         # Check membership uses channel ID or username
         member = await bot.get_chat_member(chat_id=fs_channel, user_id=user_id)
+        logging.info(f"FS Check: User {user_id} in {fs_channel} status is {member.status}")
         if member.status in [ChatMemberStatus.CREATOR, ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.MEMBER, ChatMemberStatus.RESTRICTED]:
             fs_cache.set_valid(user_id) # Simpan dalam cache
             return True
         return False
+    except TelegramBadRequest as e:
+        logging.error(f"FS Check TelegramBadRequest for User {user_id}: {e}")
+        return False
+    except TelegramForbiddenError as e:
+        logging.error(f"FS Check TelegramForbiddenError for User {user_id}: {e}")
+        return False
     except Exception as e:
         # Jika bot bukan admin channel atau channel tidak ada.
-        print(f"FS Check Error: {e}")
+        logging.error(f"FS Check Error: {e}")
         return False
 
-@router.message(CommandStart())
+@router.message(CommandStart(), F.chat.type == "private")
 async def cmd_start(message: Message):
     user_id = message.from_user.id
     username = message.from_user.username or str(user_id)
@@ -60,16 +70,18 @@ async def cmd_start(message: Message):
 @router.callback_query(F.data == "check_fs")
 async def verify_fs(callback: CallbackQuery):
     user_id = callback.from_user.id
-    is_subbed = await check_force_sub(user_id, callback.bot)
+    is_subbed = await check_force_sub(user_id, callback.bot, use_cache=False)
     
     if is_subbed:
-        await callback.message.delete()
-        welcome_msg = await db.get_setting("welcome_msg")
-        await callback.message.answer(f"✅ Terima kasih telah join channel!\n\n{welcome_msg}")
+        try:
+            await callback.message.delete()
+        except:
+            pass
+        await callback.message.answer("✅ *Verifikasi berhasil!*\n\nAnda sudah bergabung ke channel dan sekarang dapat menggunakan bot.", parse_mode="Markdown")
     else:
-        await callback.answer("❌ Anda belum join channel. Silakan join terlebih dahulu.", show_alert=True)
+        await callback.answer("❌ Anda belum bergabung ke channel. Silakan join terlebih dahulu.", show_alert=True)
 
-@router.message()
+@router.message(F.chat.type == "private")
 async def process_menfess(message: Message):
     user_id = message.from_user.id
     username = message.from_user.username or str(user_id)
@@ -135,9 +147,23 @@ async def process_menfess(message: Message):
             await message.answer("Tipe pesan ini belum didukung.")
             return
             
+def get_message_url(chat_id: str | int, message_id: int) -> str:
+    chat_id_str = str(chat_id)
+    if chat_id_str.startswith("@"):
+        return f"https://t.me/{chat_id_str[1:]}/{message_id}"
+    elif chat_id_str.startswith("-100"):
+        return f"https://t.me/c/{chat_id_str[4:]}/{message_id}"
+    else:
+        return f"https://t.me/c/{chat_id_str.strip('-')}/{message_id}"
+
         if sent_msg:
             await db.log_message(user_id, username, msg_type, content, sent_msg.message_id)
-            await message.answer("✅ Menfess berhasil dikirim ke channel!")
+            await db.add_menfess_post(user_id, sent_msg.message_id)
+            post_url = get_message_url(CHANNEL_ID, sent_msg.message_id)
+            await message.answer(
+                "✅ Pesan berhasil dikirim! 🚀\n\nGunakan tombol di bawah untuk melihat postingan Anda.",
+                reply_markup=inline.see_post_keyboard(post_url)
+            )
             
     except Exception as e:
         await message.answer("❌ Gagal mengirim pesan ke channel. Pastikan bot adalah admin di channel tersebut.")

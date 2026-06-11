@@ -35,6 +35,17 @@ async def init_db():
         await db.execute("CREATE INDEX IF NOT EXISTS idx_logs_sent_at ON logs(sent_at)")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_users_user_id ON users(user_id)")
         
+        # Tabel relasi untuk notifikasi komentar (Fitur 2)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS menfess_posts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                channel_message_id INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_menfess_posts_msg_id ON menfess_posts(channel_message_id)")
+        
         # Default settings
         defaults = {
             'prefix': '🚀',
@@ -114,3 +125,14 @@ async def get_stats():
         async with db.execute("SELECT COUNT(*) FROM logs") as cursor:
             logs_count = (await cursor.fetchone())[0]
         return users_count, logs_count
+
+async def add_menfess_post(user_id: int, channel_message_id: int):
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("INSERT INTO menfess_posts (user_id, channel_message_id) VALUES (?, ?)", (user_id, channel_message_id))
+        await db.commit()
+
+async def get_menfess_owner(channel_message_id: int):
+    async with aiosqlite.connect(DB_NAME) as db:
+        async with db.execute("SELECT user_id FROM menfess_posts WHERE channel_message_id=?", (channel_message_id,)) as cursor:
+            row = await cursor.fetchone()
+            return row[0] if row else None
