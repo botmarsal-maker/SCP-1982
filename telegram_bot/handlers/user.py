@@ -26,23 +26,38 @@ async def check_force_sub(user_id: int, bot, use_cache: bool = True) -> bool:
     if use_cache and fs_cache.is_cached_valid(user_id):
         return True
         
+    # Validasi dan formatting chat_id
+    clean_chat_id = fs_channel.strip()
+    if "t.me/" in clean_chat_id:
+        part = clean_chat_id.split("t.me/")[-1]
+        if not part.startswith("+") and not part.startswith("joinchat/"):
+            clean_chat_id = "@" + part
+    elif not clean_chat_id.startswith("@") and not clean_chat_id.lstrip("-").isdigit():
+        clean_chat_id = "@" + clean_chat_id
+
     try:
         # Check membership uses channel ID or username
-        member = await bot.get_chat_member(chat_id=fs_channel, user_id=user_id)
-        logging.info(f"FS Check: User {user_id} in {fs_channel} status is {member.status}")
-        if member.status in [ChatMemberStatus.CREATOR, ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.MEMBER, ChatMemberStatus.RESTRICTED]:
+        member = await bot.get_chat_member(chat_id=clean_chat_id, user_id=user_id)
+        logging.info(f"FS Check: User {user_id} in {clean_chat_id} status is {member.status}")
+        
+        if member.status in [
+            ChatMemberStatus.CREATOR, 
+            ChatMemberStatus.ADMINISTRATOR, 
+            ChatMemberStatus.MEMBER, 
+            ChatMemberStatus.RESTRICTED
+        ]:
             fs_cache.set_valid(user_id) # Simpan dalam cache
             return True
         return False
     except TelegramBadRequest as e:
-        logging.error(f"FS Check TelegramBadRequest for User {user_id}: {e}")
+        logging.error(f"FS Check TelegramBadRequest for User {user_id} in {clean_chat_id}: {e}")
         return False
     except TelegramForbiddenError as e:
-        logging.error(f"FS Check TelegramForbiddenError for User {user_id}: {e}")
+        logging.error(f"FS Check TelegramForbiddenError for User {user_id} in {clean_chat_id}: {e}")
         return False
     except Exception as e:
         # Jika bot bukan admin channel atau channel tidak ada.
-        logging.error(f"FS Check Error: {e}")
+        logging.error(f"FS Check Error in {clean_chat_id}: {e}")
         return False
 
 @router.message(CommandStart(), F.chat.type == "private")
