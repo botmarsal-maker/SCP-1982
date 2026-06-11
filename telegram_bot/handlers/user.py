@@ -47,11 +47,11 @@ async def check_force_sub(user_id: int, bot, use_cache: bool = True) -> bool:
         if member.status in [
             ChatMemberStatus.CREATOR, 
             ChatMemberStatus.ADMINISTRATOR, 
-            ChatMemberStatus.MEMBER, 
-            ChatMemberStatus.RESTRICTED
+            ChatMemberStatus.MEMBER
         ]:
             fs_cache.set_valid(user_id) # Simpan dalam cache
             return True
+        fs_cache.invalidate(user_id)
         return False
     except TelegramBadRequest as e:
         logging.error(f"FS Check TelegramBadRequest for User {user_id} in {clean_chat_id}: {e}")
@@ -73,14 +73,6 @@ async def cmd_start(message: Message):
     maintenance = await db.get_setting("maintenance")
     if maintenance == "1" and user_id != OWNER_ID:
         await message.answer("🚧 Bot sedang dalam masa perbaikan (maintenance). Silakan coba lagi nanti.")
-        return
-
-    is_subbed = await check_force_sub(user_id, message.bot)
-    if not is_subbed:
-        fs_channel = await db.get_setting("fs_channel")
-        fs_msg = await db.get_setting("fs_msg")
-        link = fs_channel if fs_channel.startswith("http") else f"https://t.me/{fs_channel.replace('@', '')}"
-        await message.answer(fs_msg, reply_markup=inline.fs_keyboard(link))
         return
 
     welcome_msg = await db.get_setting("welcome_msg")
@@ -122,14 +114,6 @@ async def process_menfess(message: Message):
         await message.answer("🚧 Bot sedang dalam masa perbaikan (maintenance).")
         return
 
-    is_subbed = await check_force_sub(user_id, message.bot)
-    if not is_subbed:
-        fs_channel = await db.get_setting("fs_channel")
-        fs_msg = await db.get_setting("fs_msg")
-        link = fs_channel if fs_channel.startswith("http") else f"https://t.me/{fs_channel.replace('@', '')}"
-        await message.answer(fs_msg, reply_markup=inline.fs_keyboard(link))
-        return
-        
     prefix = await db.get_setting("prefix")
     content = ""
     msg_type = "text"
@@ -185,6 +169,19 @@ async def process_menfess(message: Message):
             await message.answer("❌ *Pesan Ditolak!*\n\nPesan kamu mengandung mention/username yang dilarang.", parse_mode="Markdown")
             return
             
+    # 6. Limit Pesan Harian
+    import datetime
+    from config import OWNER_ID
+    today_str = datetime.datetime.now().strftime('%Y-%m-%d')
+    if user_id != OWNER_ID:
+        daily_limit_enabled = await db.get_setting("daily_limit_enabled")
+        if daily_limit_enabled == "1":
+            limit = int(await db.get_setting("daily_limit_count") or "5")
+            usage_count = await db.get_daily_usage(user_id, today_str)
+            if usage_count >= limit:
+                await message.answer(f"❌ *Pesan Ditolak!*\n\nAnda telah mencapai batas pengiriman harian.\nLimit Harian: `{limit} Pesan`\n\nSilakan coba lagi besok.", parse_mode="Markdown")
+                return
+
     # --- END VALIDASI ---
     
     # Helper fungsion untuk membatasi panjang caption dengan aman untuk limit Telegram (Prioritas 3)
@@ -225,6 +222,7 @@ async def process_menfess(message: Message):
         if sent_msg:
             await db.log_message(user_id, username, msg_type, content, sent_msg.message_id)
             await db.add_menfess_post(user_id, sent_msg.message_id)
+            await db.increment_daily_usage(user_id, today_str)
             post_url = get_message_url(CHANNEL_ID, sent_msg.message_id)
             await message.answer(
                 "✅ Pesan berhasil dikirim! 🚀\n\nGunakan tombol di bawah untuk melihat postingan Anda.",

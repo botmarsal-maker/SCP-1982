@@ -2,8 +2,8 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 def fs_keyboard(channel_link: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="Join Channel", url=channel_link)],
-        [InlineKeyboardButton(text="Cek Keanggotaan", callback_data="check_fs")]
+        [InlineKeyboardButton(text="📢 Gabung Channel", url=channel_link)],
+        [InlineKeyboardButton(text="✅ Cek Keanggotaan", callback_data="check_fs")]
     ])
 
 def admin_keyboard() -> InlineKeyboardMarkup:
@@ -58,6 +58,7 @@ def rules_menu_keyboard() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="🔗 Larangan Link", callback_data="rule_antilink")],
         [InlineKeyboardButton(text="👤 Larangan Username", callback_data="rule_antiusername")],
         [InlineKeyboardButton(text="🚨 Anti Spam", callback_data="rule_antispam")],
+        [InlineKeyboardButton(text="📨 Limit Pesan Harian", callback_data="rule_dailylimit")],
         [InlineKeyboardButton(text="🔙 Kembali", callback_data="admin_main")]
     ])
 
@@ -97,6 +98,15 @@ def rule_antispam_keyboard(enabled: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="✏️ Ubah Cooldown", callback_data="set_antispam_cooldown")],
         [InlineKeyboardButton(text=status, callback_data="toggle_antispam")],
+        [InlineKeyboardButton(text="🔙 Kembali", callback_data="admin_rules")]
+    ])
+
+def rule_dailylimit_keyboard(enabled: str) -> InlineKeyboardMarkup:
+    status = "✅ Aktif" if enabled == "1" else "❌ Nonaktif"
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✏️ Ubah Limit", callback_data="set_dailylimit")],
+        [InlineKeyboardButton(text=status, callback_data="toggle_dailylimit")],
+        [InlineKeyboardButton(text="📊 Statistik Penggunaan", callback_data="stats_dailylimit")],
         [InlineKeyboardButton(text="🔙 Kembali", callback_data="admin_rules")]
     ])
 

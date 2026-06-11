@@ -27,6 +27,7 @@ class AdminState(StatesGroup):
     waiting_for_add_badword = State()
     waiting_for_del_badword = State()
     waiting_for_antispam_cooldown = State()
+    waiting_for_daily_limit = State()
 
 @router.message(Command("admin"))
 async def admin_panel(message: Message):
@@ -307,3 +308,53 @@ async def do_set_antispam_cooldown(message: Message, state: FSMContext):
     await db.set_setting("anti_spam_cooldown", message.text)
     await state.clear()
     await message.answer("✅ Cooldown berhasil diubah!", reply_markup=inline.InlineKeyboardMarkup(inline_keyboard=[[inline.InlineKeyboardButton(text="🔙 Kembali", callback_data="rule_antispam")]]))
+
+@router.callback_query(F.data == "rule_dailylimit")
+async def rule_dailylimit_menu(callback: CallbackQuery):
+    enabled = await db.get_setting("daily_limit_enabled")
+    limit = await db.get_setting("daily_limit_count")
+    status = "Aktif" if enabled == "1" else "Nonaktif"
+    text = f"📨 *Pengaturan Limit Pesan Harian*\n\nStatus: `{status}`\nLimit Saat Ini: `{limit} Pesan/Hari`"
+    await callback.message.edit_text(text, reply_markup=inline.rule_dailylimit_keyboard(enabled), parse_mode="Markdown")
+
+@router.callback_query(F.data == "toggle_dailylimit")
+async def toggle_dailylimit(callback: CallbackQuery):
+    enabled = await db.get_setting("daily_limit_enabled")
+    new_val = "0" if enabled == "1" else "1"
+    await db.set_setting("daily_limit_enabled", new_val)
+    await rule_dailylimit_menu(callback)
+
+@router.callback_query(F.data == "set_dailylimit")
+async def ask_dailylimit(callback: CallbackQuery, state: FSMContext):
+    await callback.message.edit_text("Kirimkan batas limit pesan harian baru (angka, contoh 10):", reply_markup=inline.cancel_keyboard())
+    await state.set_state(AdminState.waiting_for_daily_limit)
+
+@router.message(AdminState.waiting_for_daily_limit)
+async def do_set_dailylimit(message: Message, state: FSMContext):
+    if not message.text.isdigit():
+        await message.answer("❌ Harap masukkan angka yang valid.")
+        return
+    await db.set_setting("daily_limit_count", message.text)
+    await state.clear()
+    await message.answer("✅ Limit pesan harian berhasil diubah!", reply_markup=inline.InlineKeyboardMarkup(inline_keyboard=[[inline.InlineKeyboardButton(text="🔙 Kembali", callback_data="rule_dailylimit")]]))
+
+@router.callback_query(F.data == "stats_dailylimit")
+async def stats_dailylimit(callback: CallbackQuery):
+    import datetime
+    today = datetime.datetime.now().strftime('%Y-%m-%d')
+    total_users, total_messages, top_users = await db.get_daily_stats(today)
+    
+    text = f"📊 *Statistik Hari Ini*\n\n"
+    text += f"Total Pengguna Aktif: `{total_users}`\n"
+    text += f"Total Pesan Hari Ini: `{total_messages}`\n\n"
+    text += "*Top Pengguna:*\n"
+    
+    if not top_users:
+        text += "Belum ada penggunaan hari ini."
+    else:
+        for i, (u_id, u_name, count) in enumerate(top_users, start=1):
+            name_display = u_name or str(u_id)
+            text += f"{i}. {name_display} - {count} Pesan\n"
+            
+    await callback.message.edit_text(text, reply_markup=inline.InlineKeyboardMarkup(inline_keyboard=[[inline.InlineKeyboardButton(text="🔙 Kembali", callback_data="rule_dailylimit")]]), parse_mode="Markdown")
+

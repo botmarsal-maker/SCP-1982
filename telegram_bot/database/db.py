@@ -53,6 +53,16 @@ async def init_db():
                 word TEXT UNIQUE
             )
         """)
+
+        # Tabel limit harian
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS daily_limit_usage (
+                user_id INTEGER,
+                usage_date TEXT,
+                message_count INTEGER DEFAULT 1,
+                PRIMARY KEY (user_id, usage_date)
+            )
+        """)
         
         # Default settings
         defaults = {
@@ -60,7 +70,7 @@ async def init_db():
             'force_sub': '0',
             'fs_channel': '',
             'welcome_msg': 'Halo! Kirim pesanmu kesini dan akan otomatis diteruskan ke channel.',
-            'fs_msg': 'Silakan join channel terlebih dahulu untuk menggunakan bot.',
+            'fs_msg': '❌ Anda harus bergabung ke channel terlebih dahulu untuk menggunakan bot ini.',
             'maintenance': '0',
             # Pengaturan Aturan Baru
             'max_chars_enabled': '0',
@@ -69,7 +79,9 @@ async def init_db():
             'anti_link_enabled': '0',
             'anti_username_enabled': '0',
             'anti_spam_enabled': '0',
-            'anti_spam_cooldown': '10'
+            'anti_spam_cooldown': '10',
+            'daily_limit_enabled': '0',
+            'daily_limit_count': '5'
         }
         for k, v in defaults.items():
             await db.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (k, v))
@@ -172,4 +184,39 @@ async def get_all_badwords():
         async with db.execute("SELECT word FROM badwords") as cursor:
             rows = await cursor.fetchall()
             return [row[0] for row in rows]
+
+async def get_daily_usage(user_id: int, date_str: str) -> int:
+    async with aiosqlite.connect(DB_NAME) as db:
+        async with db.execute("SELECT message_count FROM daily_limit_usage WHERE user_id=? AND usage_date=?", (user_id, date_str)) as cursor:
+            row = await cursor.fetchone()
+            return row[0] if row else 0
+
+async def increment_daily_usage(user_id: int, date_str: str):
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("""
+            INSERT INTO daily_limit_usage (user_id, usage_date, message_count) 
+            VALUES (?, ?, 1) 
+            ON CONFLICT(user_id, usage_date) 
+            DO UPDATE SET message_count = message_count + 1
+        """, (user_id, date_str))
+        await db.commit()
+
+async def get_daily_stats(date_str: str):
+    async with aiosqlite.connect(DB_NAME) as db:
+        async with db.execute("SELECT COUNT(DISTINCT user_id), SUM(message_count) FROM daily_limit_usage WHERE usage_date=?", (date_str,)) as cursor:
+            row = await cursor.fetchone()
+            total_users = row[0] if row and row[0] else 0
+            total_messages = row[1] if row and row[1] else 0
+            
+        async with db.execute("""
+            SELECT d.user_id, u.username, d.message_count 
+            FROM daily_limit_usage d
+            LEFT JOIN users u ON d.user_id = u.user_id
+            WHERE d.usage_date=? 
+            ORDER BY d.message_count DESC 
+            LIMIT 5
+        """, (date_str,)) as cursor:
+            top_users = await cursor.fetchall()
+            
+        return total_users, total_messages, top_users
 

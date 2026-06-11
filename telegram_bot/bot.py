@@ -10,6 +10,7 @@ from database import db
 from handlers import user, admin, group
 from middlewares.throttling import ThrottlingMiddleware
 from middlewares.answer_callback import AnswerCallbackMiddleware
+from middlewares.force_sub import ForceSubscribeMiddleware
 
 logging.basicConfig(level=logging.INFO, stream=sys.stdout)
 
@@ -28,6 +29,10 @@ async def main():
     
     # Daftarkan throttling middleware (Prioritas 2)
     user.router.message.middleware(ThrottlingMiddleware(rate_limit=3.0))
+    
+    # Daftarkan ForceSubscribeMiddleware agar berjalan di semua request user
+    user.router.message.middleware(ForceSubscribeMiddleware())
+    user.router.callback_query.middleware(ForceSubscribeMiddleware())
     
     # Daftarkan middleware callback
     dp.callback_query.middleware(AnswerCallbackMiddleware())

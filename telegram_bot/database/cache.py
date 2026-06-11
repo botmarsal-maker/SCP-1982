@@ -16,7 +16,7 @@ class SettingsCache:
 settings_cache = SettingsCache()
 
 class FSCache:
-    def __init__(self, ttl_seconds=600):
+    def __init__(self, ttl_seconds=300):
         self.ttl = ttl_seconds
         self._cache = {}
 
@@ -29,4 +29,8 @@ class FSCache:
     def set_valid(self, user_id: int):
         self._cache[user_id] = time.time() + self.ttl
 
-fs_cache = FSCache(ttl_seconds=600)
+    def invalidate(self, user_id: int):
+        if user_id in self._cache:
+            del self._cache[user_id]
+
+fs_cache = FSCache(ttl_seconds=300)
