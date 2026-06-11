@@ -26,15 +26,14 @@ async def check_force_sub(user_id: int, bot) -> bool:
     try:
         # Check membership uses channel ID or username
         member = await bot.get_chat_member(chat_id=fs_channel, user_id=user_id)
-        if member.status in [ChatMemberStatus.LEFT, ChatMemberStatus.KICKED]:
-            return False
-            
-        fs_cache.set_valid(user_id) # Simpan dalam cache
-        return True
+        if member.status in [ChatMemberStatus.CREATOR, ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.MEMBER, ChatMemberStatus.RESTRICTED]:
+            fs_cache.set_valid(user_id) # Simpan dalam cache
+            return True
+        return False
     except Exception as e:
         # Jika bot bukan admin channel atau channel tidak ada.
         print(f"FS Check Error: {e}")
-        return True
+        return False
 
 @router.message(CommandStart())
 async def cmd_start(message: Message):
@@ -95,9 +94,15 @@ async def process_menfess(message: Message):
     content = ""
     msg_type = "text"
     
+    # Validasi Prefix (Pesan harus diawali dengan prefix secara manual oleh pengguna)
+    user_text = message.text or message.caption or ""
+    if not user_text.strip().lower().startswith(prefix.lower()):
+        await message.answer(f"❌ *Pesan Ditolak!*\n\nPesan kamu harus diawali dengan prefix: `{prefix}`", parse_mode="Markdown")
+        return
+    
     # Helper fungsion untuk membatasi panjang caption dengan aman untuk limit Telegram (Prioritas 3)
     def prep_caption(cap):
-        full_cap = f"{prefix} {cap}" if cap else f"{prefix}"
+        full_cap = cap if cap else ""
         if len(full_cap) > 1024:
              return full_cap[:1021] + "..."
         return full_cap
@@ -105,7 +110,7 @@ async def process_menfess(message: Message):
     try:
         sent_msg = None
         if message.text:
-            text = f"{prefix} {message.text}"
+            text = message.text
             # Telegram text limit is 4096
             if len(text) > 4096:
                 text = text[:4093] + "..."
