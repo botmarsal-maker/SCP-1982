@@ -60,7 +60,7 @@ async def _load_settings_to_cache():
             settings_cache.load_all(settings_dict)
 
 async def cleanup_old_logs():
-    \"\"\"Menghapus log yang lebih tua dari 30 hari (Housekeeping)\"\"\"
+    """Menghapus log yang lebih tua dari 30 hari (Housekeeping)"""
     async with aiosqlite.connect(DB_NAME) as db:
         await db.execute("DELETE FROM logs WHERE sent_at <= datetime('now', '-30 days')")
         await db.commit()
