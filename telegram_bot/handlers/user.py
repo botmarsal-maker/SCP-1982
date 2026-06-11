@@ -81,6 +81,15 @@ async def verify_fs(callback: CallbackQuery):
     else:
         await callback.answer("❌ Anda belum bergabung ke channel. Silakan join terlebih dahulu.", show_alert=True)
 
+def get_message_url(chat_id: str | int, message_id: int) -> str:
+    chat_id_str = str(chat_id)
+    if chat_id_str.startswith("@"):
+        return f"https://t.me/{chat_id_str[1:]}/{message_id}"
+    elif chat_id_str.startswith("-100"):
+        return f"https://t.me/c/{chat_id_str[4:]}/{message_id}"
+    else:
+        return f"https://t.me/c/{chat_id_str.strip('-')}/{message_id}"
+
 @router.message(F.chat.type == "private")
 async def process_menfess(message: Message):
     user_id = message.from_user.id
@@ -147,15 +156,6 @@ async def process_menfess(message: Message):
             await message.answer("Tipe pesan ini belum didukung.")
             return
             
-def get_message_url(chat_id: str | int, message_id: int) -> str:
-    chat_id_str = str(chat_id)
-    if chat_id_str.startswith("@"):
-        return f"https://t.me/{chat_id_str[1:]}/{message_id}"
-    elif chat_id_str.startswith("-100"):
-        return f"https://t.me/c/{chat_id_str[4:]}/{message_id}"
-    else:
-        return f"https://t.me/c/{chat_id_str.strip('-')}/{message_id}"
-
         if sent_msg:
             await db.log_message(user_id, username, msg_type, content, sent_msg.message_id)
             await db.add_menfess_post(user_id, sent_msg.message_id)
