@@ -9,12 +9,17 @@ from config import OWNER_ID, CHANNEL_ID
 from database import db
 from keyboards import inline
 from filters.is_owner import IsOwner
+from middlewares.admin_session import AdminSessionMiddleware
 from services.broadcast import start_broadcast
 
 router = Router()
 # Menerapkan IsOwner filter pada skala router (Prioritas 8)
 router.message.filter(IsOwner())
 router.callback_query.filter(IsOwner())
+
+# Menerapkan Admin session protection pada skala router
+router.message.middleware(AdminSessionMiddleware())
+router.callback_query.middleware(AdminSessionMiddleware())
 
 class AdminState(StatesGroup):
     waiting_for_prefix = State()

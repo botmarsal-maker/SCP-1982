@@ -29,7 +29,9 @@ async def main():
         return True
     
     # Daftarkan throttling middleware (Prioritas 2)
-    user.router.message.middleware(ThrottlingMiddleware(rate_limit=3.0))
+    throttling_mw = ThrottlingMiddleware(rate_limit=3.0, cb_rate_limit=1.0)
+    dp.message.middleware(throttling_mw)
+    dp.callback_query.middleware(throttling_mw)
     
     # Daftarkan ForceSubscribeMiddleware agar berjalan di semua request user
     user.router.message.middleware(ForceSubscribeMiddleware())
