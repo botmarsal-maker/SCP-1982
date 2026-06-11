@@ -45,6 +45,14 @@ async def init_db():
             )
         """)
         await db.execute("CREATE INDEX IF NOT EXISTS idx_menfess_posts_msg_id ON menfess_posts(channel_message_id)")
+
+        # Tabel badwords (Fitur Filter Kata Kasar)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS badwords (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                word TEXT UNIQUE
+            )
+        """)
         
         # Default settings
         defaults = {
@@ -53,7 +61,15 @@ async def init_db():
             'fs_channel': '',
             'welcome_msg': 'Halo! Kirim pesanmu kesini dan akan otomatis diteruskan ke channel.',
             'fs_msg': 'Silakan join channel terlebih dahulu untuk menggunakan bot.',
-            'maintenance': '0'
+            'maintenance': '0',
+            # Pengaturan Aturan Baru
+            'max_chars_enabled': '0',
+            'max_chars_limit': '250',
+            'badwords_enabled': '0',
+            'anti_link_enabled': '0',
+            'anti_username_enabled': '0',
+            'anti_spam_enabled': '0',
+            'anti_spam_cooldown': '10'
         }
         for k, v in defaults.items():
             await db.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (k, v))
@@ -136,3 +152,24 @@ async def get_menfess_owner(channel_message_id: int):
         async with db.execute("SELECT user_id FROM menfess_posts WHERE channel_message_id=?", (channel_message_id,)) as cursor:
             row = await cursor.fetchone()
             return row[0] if row else None
+
+async def add_badword(word: str):
+    async with aiosqlite.connect(DB_NAME) as db:
+        try:
+            await db.execute("INSERT INTO badwords (word) VALUES (?)", (word.lower(),))
+            await db.commit()
+            return True
+        except aiosqlite.IntegrityError:
+            return False
+
+async def remove_badword(word: str):
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("DELETE FROM badwords WHERE word=?", (word.lower(),))
+        await db.commit()
+
+async def get_all_badwords():
+    async with aiosqlite.connect(DB_NAME) as db:
+        async with db.execute("SELECT word FROM badwords") as cursor:
+            rows = await cursor.fetchall()
+            return [row[0] for row in rows]
+

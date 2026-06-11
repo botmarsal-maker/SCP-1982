@@ -9,6 +9,7 @@ from config import BOT_TOKEN
 from database import db
 from handlers import user, admin, group
 from middlewares.throttling import ThrottlingMiddleware
+from middlewares.answer_callback import AnswerCallbackMiddleware
 
 logging.basicConfig(level=logging.INFO, stream=sys.stdout)
 
@@ -27,6 +28,9 @@ async def main():
     
     # Daftarkan throttling middleware (Prioritas 2)
     user.router.message.middleware(ThrottlingMiddleware(rate_limit=3.0))
+    
+    # Daftarkan middleware callback
+    dp.callback_query.middleware(AnswerCallbackMiddleware())
     
     dp.include_router(admin.router)
     dp.include_router(user.router)

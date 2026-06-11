@@ -11,7 +11,11 @@ from database.cache import fs_cache
 router = Router()
 
 import logging
+import re
+import time
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
+
+user_last_message = {}
 
 async def check_force_sub(user_id: int, bot, use_cache: bool = True) -> bool:
     fs_status = await db.get_setting("force_sub")
@@ -135,6 +139,53 @@ async def process_menfess(message: Message):
     if not user_text.strip().lower().startswith(prefix.lower()):
         await message.answer(f"❌ *Pesan Ditolak!*\n\nPesan kamu harus diawali dengan prefix: `{prefix}`", parse_mode="Markdown")
         return
+        
+    # --- VALIDASI ATURAN ---
+    
+    # 1. Anti Spam
+    anti_spam_enabled = await db.get_setting("anti_spam_enabled")
+    if anti_spam_enabled == "1":
+        cooldown = int(await db.get_setting("anti_spam_cooldown") or "10")
+        current_time = time.time()
+        last_time = user_last_message.get(user_id, 0)
+        if current_time - last_time < cooldown:
+            wait_time = int(cooldown - (current_time - last_time))
+            await message.answer(f"❌ *Pesan Ditolak!*\n\nHarap tunggu {wait_time} detik sebelum mengirim pesan lagi.", parse_mode="Markdown")
+            return
+        user_last_message[user_id] = current_time
+        
+    # 2. Maksimal Karakter
+    max_chars_enabled = await db.get_setting("max_chars_enabled")
+    if max_chars_enabled == "1":
+        limit = int(await db.get_setting("max_chars_limit"))
+        if len(user_text) > limit:
+            await message.answer(f"❌ *Pesan Ditolak!*\n\nPesan kamu melebihi batas karakter ({len(user_text)}/{limit} karakter).", parse_mode="Markdown")
+            return
+            
+    # 3. Filter Kata Kasar
+    badwords_enabled = await db.get_setting("badwords_enabled")
+    if badwords_enabled == "1":
+        badwords = await db.get_all_badwords()
+        lower_text = user_text.lower()
+        if any(word in lower_text for word in badwords):
+            await message.answer("❌ *Pesan Ditolak!*\n\nPesan kamu mengandung kata-kata yang dilarang.", parse_mode="Markdown")
+            return
+            
+    # 4. Larangan Link
+    anti_link_enabled = await db.get_setting("anti_link_enabled")
+    if anti_link_enabled == "1":
+        if re.search(r'(http://|https://|t\.me/|telegram\.me/|[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})', user_text, re.IGNORECASE):
+            await message.answer("❌ *Pesan Ditolak!*\n\nPesan kamu mengandung tautan/link yang dilarang.", parse_mode="Markdown")
+            return
+            
+    # 5. Larangan Username
+    anti_username_enabled = await db.get_setting("anti_username_enabled")
+    if anti_username_enabled == "1":
+        if re.search(r'@[a-zA-Z0-9_]+', user_text):
+            await message.answer("❌ *Pesan Ditolak!*\n\nPesan kamu mengandung mention/username yang dilarang.", parse_mode="Markdown")
+            return
+            
+    # --- END VALIDASI ---
     
     # Helper fungsion untuk membatasi panjang caption dengan aman untuk limit Telegram (Prioritas 3)
     def prep_caption(cap):

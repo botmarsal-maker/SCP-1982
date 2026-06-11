@@ -23,6 +23,10 @@ class AdminState(StatesGroup):
     waiting_for_welcome = State()
     waiting_for_fs_msg = State()
     waiting_for_delete_msg_id = State()
+    waiting_for_max_chars = State()
+    waiting_for_add_badword = State()
+    waiting_for_del_badword = State()
+    waiting_for_antispam_cooldown = State()
 
 @router.message(Command("admin"))
 async def admin_panel(message: Message):
@@ -162,3 +166,144 @@ async def do_delete_msg(message: Message, state: FSMContext):
         await message.answer("❌ Message ID harus berupa angka.")
     except Exception as e:
         await message.answer(f"❌ Gagal menghapus pesan. Error: {e}")
+
+# ================= KELOLA ATURAN =================
+
+@router.callback_query(F.data == "admin_rules")
+async def admin_rules_menu(callback: CallbackQuery):
+    await callback.message.edit_text("📜 *Kelola Aturan*", reply_markup=inline.rules_menu_keyboard(), parse_mode="Markdown")
+
+@router.callback_query(F.data == "rule_max_chars")
+async def rule_max_chars_menu(callback: CallbackQuery):
+    enabled = await db.get_setting("max_chars_enabled")
+    limit = await db.get_setting("max_chars_limit")
+    text = f"📏 *Maksimal Karakter*\n\nStatus saat ini:\nMaksimal Karakter: `{limit}`"
+    await callback.message.edit_text(text, reply_markup=inline.rule_max_chars_keyboard(enabled), parse_mode="Markdown")
+
+@router.callback_query(F.data == "toggle_max_chars")
+async def toggle_max_chars(callback: CallbackQuery):
+    enabled = await db.get_setting("max_chars_enabled")
+    new_val = "0" if enabled == "1" else "1"
+    await db.set_setting("max_chars_enabled", new_val)
+    await rule_max_chars_menu(callback)
+
+@router.callback_query(F.data == "set_max_chars")
+async def ask_max_chars(callback: CallbackQuery, state: FSMContext):
+    await callback.message.edit_text("Kirimkan batas maksimal karakter baru (angka):", reply_markup=inline.cancel_keyboard())
+    await state.set_state(AdminState.waiting_for_max_chars)
+
+@router.message(AdminState.waiting_for_max_chars)
+async def do_set_max_chars(message: Message, state: FSMContext):
+    if not message.text.isdigit():
+        await message.answer("❌ Harap masukkan angka yang valid.")
+        return
+    await db.set_setting("max_chars_limit", message.text)
+    await state.clear()
+    await message.answer("✅ Batas karakter berhasil diubah!", reply_markup=inline.InlineKeyboardMarkup(inline_keyboard=[[inline.InlineKeyboardButton(text="🔙 Kembali", callback_data="rule_max_chars")]]))
+
+@router.callback_query(F.data == "rule_badwords")
+async def rule_badwords_menu(callback: CallbackQuery):
+    enabled = await db.get_setting("badwords_enabled")
+    status_text = "Aktif" if enabled == "1" else "Nonaktif"
+    text = f"🚫 *Filter Kata Kasar*\n\nFilter Kata Kasar: `{status_text}`"
+    await callback.message.edit_text(text, reply_markup=inline.rule_badwords_keyboard(enabled), parse_mode="Markdown")
+
+@router.callback_query(F.data == "toggle_badwords")
+async def toggle_badwords(callback: CallbackQuery):
+    enabled = await db.get_setting("badwords_enabled")
+    new_val = "0" if enabled == "1" else "1"
+    await db.set_setting("badwords_enabled", new_val)
+    await rule_badwords_menu(callback)
+
+@router.callback_query(F.data == "add_badword")
+async def ask_add_badword(callback: CallbackQuery, state: FSMContext):
+    await callback.message.edit_text("Kirimkan kata kasar yang ingin ditambahkan:", reply_markup=inline.cancel_keyboard())
+    await state.set_state(AdminState.waiting_for_add_badword)
+
+@router.message(AdminState.waiting_for_add_badword)
+async def do_add_badword(message: Message, state: FSMContext):
+    word = message.text.strip().lower()
+    success = await db.add_badword(word)
+    await state.clear()
+    if success:
+        await message.answer("✅ Kata berhasil ditambahkan!", reply_markup=inline.InlineKeyboardMarkup(inline_keyboard=[[inline.InlineKeyboardButton(text="🔙 Kembali", callback_data="rule_badwords")]]))
+    else:
+        await message.answer("❌ Kata sudah ada di daftar.", reply_markup=inline.InlineKeyboardMarkup(inline_keyboard=[[inline.InlineKeyboardButton(text="🔙 Kembali", callback_data="rule_badwords")]]))
+
+@router.callback_query(F.data == "del_badword")
+async def ask_del_badword(callback: CallbackQuery, state: FSMContext):
+    await callback.message.edit_text("Kirimkan kata kasar yang ingin dihapus:", reply_markup=inline.cancel_keyboard())
+    await state.set_state(AdminState.waiting_for_del_badword)
+
+@router.message(AdminState.waiting_for_del_badword)
+async def do_del_badword(message: Message, state: FSMContext):
+    word = message.text.strip().lower()
+    await db.remove_badword(word)
+    await state.clear()
+    await message.answer("✅ Kata berhasil dihapus (jika ada).", reply_markup=inline.InlineKeyboardMarkup(inline_keyboard=[[inline.InlineKeyboardButton(text="🔙 Kembali", callback_data="rule_badwords")]]))
+
+@router.callback_query(F.data == "list_badwords")
+async def list_badwords(callback: CallbackQuery):
+    words = await db.get_all_badwords()
+    if not words:
+        text = "Daftar kata kasar kosong."
+    else:
+        text = "📋 *Daftar Kata Kasar:*\n\n" + ", ".join(words)
+    await callback.message.edit_text(text, reply_markup=inline.InlineKeyboardMarkup(inline_keyboard=[[inline.InlineKeyboardButton(text="🔙 Kembali", callback_data="rule_badwords")]]), parse_mode="Markdown")
+
+@router.callback_query(F.data == "rule_antilink")
+async def rule_antilink_menu(callback: CallbackQuery):
+    enabled = await db.get_setting("anti_link_enabled")
+    status = "Aktif" if enabled == "1" else "Nonaktif"
+    text = f"🔗 *Larangan Link*\n\nLarangan Link: `{status}`"
+    await callback.message.edit_text(text, reply_markup=inline.rule_antilink_keyboard(enabled), parse_mode="Markdown")
+
+@router.callback_query(F.data == "toggle_antilink")
+async def toggle_antilink(callback: CallbackQuery):
+    enabled = await db.get_setting("anti_link_enabled")
+    new_val = "0" if enabled == "1" else "1"
+    await db.set_setting("anti_link_enabled", new_val)
+    await rule_antilink_menu(callback)
+
+@router.callback_query(F.data == "rule_antiusername")
+async def rule_antiusername_menu(callback: CallbackQuery):
+    enabled = await db.get_setting("anti_username_enabled")
+    status = "Aktif" if enabled == "1" else "Nonaktif"
+    text = f"👤 *Larangan Username*\n\nLarangan @Username: `{status}`"
+    await callback.message.edit_text(text, reply_markup=inline.rule_antiusername_keyboard(enabled), parse_mode="Markdown")
+
+@router.callback_query(F.data == "toggle_antiusername")
+async def toggle_antiusername(callback: CallbackQuery):
+    enabled = await db.get_setting("anti_username_enabled")
+    new_val = "0" if enabled == "1" else "1"
+    await db.set_setting("anti_username_enabled", new_val)
+    await rule_antiusername_menu(callback)
+
+@router.callback_query(F.data == "rule_antispam")
+async def rule_antispam_menu(callback: CallbackQuery):
+    enabled = await db.get_setting("anti_spam_enabled")
+    cooldown = await db.get_setting("anti_spam_cooldown")
+    status = "Aktif" if enabled == "1" else "Nonaktif"
+    text = f"🚨 *Anti Spam*\n\nAnti Spam: `{status}`\nCooldown: `{cooldown} detik`"
+    await callback.message.edit_text(text, reply_markup=inline.rule_antispam_keyboard(enabled), parse_mode="Markdown")
+
+@router.callback_query(F.data == "toggle_antispam")
+async def toggle_antispam(callback: CallbackQuery):
+    enabled = await db.get_setting("anti_spam_enabled")
+    new_val = "0" if enabled == "1" else "1"
+    await db.set_setting("anti_spam_enabled", new_val)
+    await rule_antispam_menu(callback)
+
+@router.callback_query(F.data == "set_antispam_cooldown")
+async def ask_antispam_cooldown(callback: CallbackQuery, state: FSMContext):
+    await callback.message.edit_text("Kirimkan waktu cooldown baru (dalam detik, misal 10):", reply_markup=inline.cancel_keyboard())
+    await state.set_state(AdminState.waiting_for_antispam_cooldown)
+
+@router.message(AdminState.waiting_for_antispam_cooldown)
+async def do_set_antispam_cooldown(message: Message, state: FSMContext):
+    if not message.text.isdigit():
+        await message.answer("❌ Harap masukkan angka yang valid.")
+        return
+    await db.set_setting("anti_spam_cooldown", message.text)
+    await state.clear()
+    await message.answer("✅ Cooldown berhasil diubah!", reply_markup=inline.InlineKeyboardMarkup(inline_keyboard=[[inline.InlineKeyboardButton(text="🔙 Kembali", callback_data="rule_antispam")]]))
