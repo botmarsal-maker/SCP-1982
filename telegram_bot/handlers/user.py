@@ -1,5 +1,5 @@
 from aiogram import Router, F
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, ChatMemberUpdated
 from aiogram.filters import CommandStart
 from aiogram.enums import ChatMemberStatus
 
@@ -74,6 +74,16 @@ async def check_force_sub(user_id: int, bot, use_cache: bool = True) -> bool:
         fs_cache.invalidate(user_id)
         return False
 
+@router.chat_member()
+async def on_user_leave_channel(chat_member_updated: ChatMemberUpdated):
+    user_id = chat_member_updated.new_chat_member.user.id
+    status = chat_member_updated.new_chat_member.status
+    if status in [ChatMemberStatus.LEFT, ChatMemberStatus.KICKED, ChatMemberStatus.RESTRICTED]:
+        fs_cache.invalidate(user_id)
+        logging.info(f"[FORCESUB CHECK]\nuser_id={user_id}\nchannel_id={chat_member_updated.chat.id}\nstatus={status}")
+    else:
+        logging.info(f"[FORCESUB CHECK]\nuser_id={user_id}\nchannel_id={chat_member_updated.chat.id}\nstatus={status}")
+        
 @router.message(CommandStart(), F.chat.type == "private")
 async def cmd_start(message: Message):
     user_id = message.from_user.id
@@ -144,7 +154,8 @@ async def verify_fs(callback: CallbackQuery):
         await callback.message.answer("✅ *Verifikasi berhasil!*\n\nAnda sekarang dapat menggunakan bot.", parse_mode="Markdown")
     else:
         fs_cache.invalidate(user_id)
-        fs_msg = "❌ Anda harus bergabung ke seluruh channel berikut:\n\n" + status_text
+        custom_fs_msg = await db.get_setting("fs_msg")
+        fs_msg = f"{custom_fs_msg}\n\n{status_text}"
         buttons.append([inline.InlineKeyboardButton(text="✅ Cek Keanggotaan", callback_data="check_fs")])
         keyboard = inline.InlineKeyboardMarkup(inline_keyboard=buttons)
         try:

@@ -58,6 +58,12 @@ def cancel_keyboard() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="Batal", callback_data="cancel_action")]
     ])
 
+def confirm_broadcast_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Konfirmasi Broadcast", callback_data="confirm_broadcast")],
+        [InlineKeyboardButton(text="❌ Batal Broadcast", callback_data="cancel_action")]
+    ])
+
 def see_post_keyboard(post_url: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🔗 Lihat Postingan", url=post_url)]

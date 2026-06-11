@@ -49,7 +49,17 @@ class ForceSubscribeMiddleware(BaseMiddleware):
             return await handler(event, data)
 
         if fs_cache.is_cached_valid(user_id):
-            return await handler(event, data)
+            # Ignore cache for main features (sending menfess)
+            bypass_cache = False
+            if isinstance(event, Message) and event.chat.type == "private":
+                text = event.text or event.caption or ""
+                if text and not text.startswith('/'):
+                    bypass_cache = True
+                elif event.photo or event.video or event.document:
+                    bypass_cache = True
+                    
+            if not bypass_cache:
+                return await handler(event, data)
 
         all_subbed = True
         status_text = ""
@@ -88,7 +98,8 @@ class ForceSubscribeMiddleware(BaseMiddleware):
             return await handler(event, data)
         else:
             fs_cache.invalidate(user_id)
-            fs_msg = "❌ Anda harus bergabung ke seluruh channel berikut:\n\n" + status_text
+            custom_fs_msg = await db.get_setting("fs_msg")
+            fs_msg = f"{custom_fs_msg}\n\n{status_text}"
             
             buttons.append([InlineKeyboardButton(text="✅ Cek Keanggotaan", callback_data="check_fs")])
             keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)

@@ -246,9 +246,24 @@ async def ask_broadcast(callback: CallbackQuery, state: FSMContext):
 
 @router.message(AdminState.waiting_for_broadcast)
 async def process_broadcast(message: Message, state: FSMContext):
+    await state.update_data(broadcast_msg_id=message.message_id, broadcast_chat_id=message.chat.id)
+    await message.answer("Anda yakin ingin mengirim broadcast ini?", reply_markup=inline.confirm_broadcast_keyboard())
+
+@router.callback_query(F.data == "confirm_broadcast")
+async def confirm_broadcast(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    msg_id = data.get("broadcast_msg_id")
+    chat_id = data.get("broadcast_chat_id")
+    
     await state.clear()
+    
+    if not msg_id or not chat_id:
+        await callback.message.edit_text("❌ Pesan broadcast tidak ditemukan, silakan coba lagi.", reply_markup=inline.InlineKeyboardMarkup(inline_keyboard=[[inline.InlineKeyboardButton(text="🔙 Kembali", callback_data="admin_main")]]))
+        return
+        
+    await callback.message.edit_text("🔄 Memulai broadcast...")
     # Mengirim broadcast ke background task agar tidak stall proses utama (Prioritas 1)
-    asyncio.create_task(start_broadcast(message.bot, message.from_user.id, message.message_id, message.chat.id))
+    asyncio.create_task(start_broadcast(callback.bot, callback.from_user.id, msg_id, chat_id))
 
 @router.callback_query(F.data == "delete_menfess")
 async def ask_delete_msg(callback: CallbackQuery, state: FSMContext):
@@ -258,14 +273,15 @@ async def ask_delete_msg(callback: CallbackQuery, state: FSMContext):
 @router.message(AdminState.waiting_for_delete_msg_id)
 async def do_delete_msg(message: Message, state: FSMContext):
     await state.clear()
+    from config import CHANNEL_ID
     try:
         msg_id = int(message.text)
         await message.bot.delete_message(chat_id=CHANNEL_ID, message_id=msg_id)
         await message.answer("✅ Pesan berhasil dihapus dari channel!", reply_markup=inline.InlineKeyboardMarkup(inline_keyboard=[[inline.InlineKeyboardButton(text="🔙 Kembali", callback_data="admin_main")]]))
     except ValueError:
-        await message.answer("❌ Message ID harus berupa angka.")
+        await message.answer("❌ Message ID harus berupa angka.", reply_markup=inline.InlineKeyboardMarkup(inline_keyboard=[[inline.InlineKeyboardButton(text="🔙 Kembali", callback_data="admin_main")]]))
     except Exception as e:
-        await message.answer(f"❌ Gagal menghapus pesan. Error: {e}")
+        await message.answer(f"❌ Gagal menghapus pesan. Error: {e}", reply_markup=inline.InlineKeyboardMarkup(inline_keyboard=[[inline.InlineKeyboardButton(text="🔙 Kembali", callback_data="admin_main")]]))
 
 # ================= KELOLA ATURAN =================
 
