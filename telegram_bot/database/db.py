@@ -64,6 +64,32 @@ async def init_db():
             )
         """)
         
+        # Tabel bot_verifications
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS bot_verifications (
+                user_id INTEGER PRIMARY KEY,
+                verified_at REAL
+            )
+        """)
+
+        # Tabel force_sub_channels
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS force_sub_channels (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                channel_id TEXT UNIQUE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        # Tabel admin_sessions
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS admin_sessions (
+                user_id INTEGER PRIMARY KEY,
+                login_at REAL,
+                expired_at REAL
+            )
+        """)
+        
         # Default settings
         defaults = {
             'prefix': '🚀',
@@ -81,7 +107,10 @@ async def init_db():
             'anti_spam_enabled': '0',
             'anti_spam_cooldown': '10',
             'daily_limit_enabled': '0',
-            'daily_limit_count': '5'
+            'daily_limit_count': '5',
+            'force_bot_enabled': '0',
+            'force_bot_username': 'BeliTonBot',
+            'force_bot_duration': '24'
         }
         for k, v in defaults.items():
             await db.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (k, v))
@@ -219,4 +248,66 @@ async def get_daily_stats(date_str: str):
             top_users = await cursor.fetchall()
             
         return total_users, total_messages, top_users
+
+async def get_bot_verification(user_id: int) -> float:
+    async with aiosqlite.connect(DB_NAME) as db:
+        async with db.execute("SELECT verified_at FROM bot_verifications WHERE user_id=?", (user_id,)) as cursor:
+            row = await cursor.fetchone()
+            return row[0] if row else 0.0
+
+async def set_bot_verification(user_id: int):
+    import time
+    now = time.time()
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("""
+            INSERT INTO bot_verifications (user_id, verified_at) 
+            VALUES (?, ?) 
+            ON CONFLICT(user_id) 
+            DO UPDATE SET verified_at = ?
+        """, (user_id, now, now))
+        await db.commit()
+
+async def get_fs_channels() -> list:
+    async with aiosqlite.connect(DB_NAME) as db:
+        async with db.execute("SELECT channel_id FROM force_sub_channels") as cursor:
+            rows = await cursor.fetchall()
+            return [row[0] for row in rows]
+
+async def add_fs_channel(channel_id: str) -> bool:
+    async with aiosqlite.connect(DB_NAME) as db:
+        try:
+            await db.execute("INSERT INTO force_sub_channels (channel_id) VALUES (?)", (channel_id,))
+            await db.commit()
+            return True
+        except aiosqlite.IntegrityError:
+            return False
+
+async def remove_fs_channel(channel_id: str):
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("DELETE FROM force_sub_channels WHERE channel_id=?", (channel_id,))
+        await db.commit()
+
+async def get_admin_session(user_id: int) -> float:
+    async with aiosqlite.connect(DB_NAME) as db:
+        async with db.execute("SELECT expired_at FROM admin_sessions WHERE user_id=?", (user_id,)) as cursor:
+            row = await cursor.fetchone()
+            return row[0] if row else 0.0
+
+async def set_admin_session(user_id: int, duration_seconds: int = 1200):
+    import time
+    now = time.time()
+    expired_at = now + duration_seconds
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("""
+            INSERT INTO admin_sessions (user_id, login_at, expired_at) 
+            VALUES (?, ?, ?) 
+            ON CONFLICT(user_id) 
+            DO UPDATE SET login_at = ?, expired_at = ?
+        """, (user_id, now, expired_at, now, expired_at))
+        await db.commit()
+
+async def delete_admin_session(user_id: int):
+    async with aiosqlite.connect(DB_NAME) as db:
+        await db.execute("DELETE FROM admin_sessions WHERE user_id=?", (user_id,))
+        await db.commit()
 

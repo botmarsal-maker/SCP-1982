@@ -11,6 +11,7 @@ from handlers import user, admin, group
 from middlewares.throttling import ThrottlingMiddleware
 from middlewares.answer_callback import AnswerCallbackMiddleware
 from middlewares.force_sub import ForceSubscribeMiddleware
+from middlewares.force_bot import ForceBotMiddleware
 
 logging.basicConfig(level=logging.INFO, stream=sys.stdout)
 
@@ -33,6 +34,10 @@ async def main():
     # Daftarkan ForceSubscribeMiddleware agar berjalan di semua request user
     user.router.message.middleware(ForceSubscribeMiddleware())
     user.router.callback_query.middleware(ForceSubscribeMiddleware())
+
+    # Daftarkan ForceBotMiddleware
+    user.router.message.middleware(ForceBotMiddleware())
+    user.router.callback_query.middleware(ForceBotMiddleware())
     
     # Daftarkan middleware callback
     dp.callback_query.middleware(AnswerCallbackMiddleware())

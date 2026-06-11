@@ -44,41 +44,54 @@ class ForceSubscribeMiddleware(BaseMiddleware):
         if fs_status != "1":
             return await handler(event, data)
             
-        fs_channel = await db.get_setting("fs_channel")
-        if not fs_channel:
+        channels = await db.get_fs_channels()
+        if not channels:
             return await handler(event, data)
 
         if fs_cache.is_cached_valid(user_id):
             return await handler(event, data)
 
-        clean_chat_id = fs_channel.strip()
-        if "t.me/" in clean_chat_id:
-            part = clean_chat_id.split("t.me/")[-1]
-            if not part.startswith("+") and not part.startswith("joinchat/"):
-                clean_chat_id = "@" + part
-        elif not clean_chat_id.startswith("@") and not clean_chat_id.lstrip("-").isdigit():
-            clean_chat_id = "@" + clean_chat_id
+        all_subbed = True
+        status_text = ""
+        buttons = []
+        
+        for idx, channel in enumerate(channels, 1):
+            clean_chat_id = channel.strip()
+            if "t.me/" in clean_chat_id:
+                part = clean_chat_id.split("t.me/")[-1]
+                if not part.startswith("+") and not part.startswith("joinchat/"):
+                    clean_chat_id = "@" + part
+            elif not clean_chat_id.startswith("@") and not clean_chat_id.lstrip("-").isdigit():
+                clean_chat_id = "@" + clean_chat_id
 
-        is_subbed = False
-        try:
-            member = await bot.get_chat_member(chat_id=clean_chat_id, user_id=user_id)
-            if member.status in [ChatMemberStatus.CREATOR, ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.MEMBER]:
-                fs_cache.set_valid(user_id)
-                is_subbed = True
-            else:
-                fs_cache.invalidate(user_id)
-        except Exception as e:
-            logging.error(f"FS Check Middleware Error in {clean_chat_id} for user {user_id}: {e}")
             is_subbed = False
-
-        if not is_subbed:
-            fs_msg = await db.get_setting("fs_msg") or "❌ Anda harus bergabung ke channel terlebih dahulu untuk menggunakan bot ini."
-            link = fs_channel if fs_channel.startswith("http") else f"https://t.me/{fs_channel.replace('@', '')}"
+            try:
+                member = await bot.get_chat_member(chat_id=clean_chat_id, user_id=user_id)
+                if member.status in [ChatMemberStatus.CREATOR, ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.MEMBER]:
+                    is_subbed = True
+            except Exception as e:
+                logging.error(f"FS Check Middleware Error in {clean_chat_id} for user {user_id}: {e}")
+                is_subbed = False
+                
+            if not is_subbed:
+                all_subbed = False
             
-            keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="📢 Gabung Channel", url=link)],
-                [InlineKeyboardButton(text="✅ Cek Keanggotaan", callback_data="check_fs")]
-            ])
+            icon = "✅" if is_subbed else "❌"
+            display_name = clean_chat_id if not clean_chat_id.startswith("-100") else f"Channel {idx}"
+            status_text += f"📢 {display_name} {icon}\n"
+            
+            link = channel if channel.startswith("http") else f"https://t.me/{channel.replace('@', '')}"
+            buttons.append([InlineKeyboardButton(text=f"📢 Gabung Channel {idx}", url=link)])
+
+        if all_subbed:
+            fs_cache.set_valid(user_id)
+            return await handler(event, data)
+        else:
+            fs_cache.invalidate(user_id)
+            fs_msg = "❌ Anda harus bergabung ke seluruh channel berikut:\n\n" + status_text
+            
+            buttons.append([InlineKeyboardButton(text="✅ Cek Keanggotaan", callback_data="check_fs")])
+            keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
             
             if isinstance(event, Message):
                 await event.answer(fs_msg, reply_markup=keyboard)
@@ -86,5 +99,3 @@ class ForceSubscribeMiddleware(BaseMiddleware):
                 await event.message.answer(fs_msg, reply_markup=keyboard)
                 await event.answer("Anda harus bergabung ke channel.", show_alert=True)
             return # Stop processing
-            
-        return await handler(event, data)

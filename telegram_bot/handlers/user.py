@@ -22,46 +22,56 @@ async def check_force_sub(user_id: int, bot, use_cache: bool = True) -> bool:
     if fs_status != "1":
         return True
     
-    fs_channel = await db.get_setting("fs_channel")
-    if not fs_channel:
+    channels = await db.get_fs_channels()
+    if not channels:
         return True
         
     # Gunakan cache memori untuk durasi 10 menit guna mengurangi rate limit Telegram (Prioritas 7)
     if use_cache and fs_cache.is_cached_valid(user_id):
         return True
         
-    # Validasi dan formatting chat_id
-    clean_chat_id = fs_channel.strip()
-    if "t.me/" in clean_chat_id:
-        part = clean_chat_id.split("t.me/")[-1]
-        if not part.startswith("+") and not part.startswith("joinchat/"):
-            clean_chat_id = "@" + part
-    elif not clean_chat_id.startswith("@") and not clean_chat_id.lstrip("-").isdigit():
-        clean_chat_id = "@" + clean_chat_id
+    all_subbed = True
+    for channel in channels:
+        # Validasi dan formatting chat_id
+        clean_chat_id = channel.strip()
+        if "t.me/" in clean_chat_id:
+            part = clean_chat_id.split("t.me/")[-1]
+            if not part.startswith("+") and not part.startswith("joinchat/"):
+                clean_chat_id = "@" + part
+        elif not clean_chat_id.startswith("@") and not clean_chat_id.lstrip("-").isdigit():
+            clean_chat_id = "@" + clean_chat_id
 
-    try:
-        # Check membership uses channel ID or username
-        member = await bot.get_chat_member(chat_id=clean_chat_id, user_id=user_id)
-        logging.info(f"FS Check: User {user_id} in {clean_chat_id} status is {member.status}")
-        
-        if member.status in [
-            ChatMemberStatus.CREATOR, 
-            ChatMemberStatus.ADMINISTRATOR, 
-            ChatMemberStatus.MEMBER
-        ]:
-            fs_cache.set_valid(user_id) # Simpan dalam cache
-            return True
+        try:
+            # Check membership uses channel ID or username
+            member = await bot.get_chat_member(chat_id=clean_chat_id, user_id=user_id)
+            logging.info(f"FS Check: User {user_id} in {clean_chat_id} status is {member.status}")
+            
+            if member.status not in [
+                ChatMemberStatus.CREATOR, 
+                ChatMemberStatus.ADMINISTRATOR, 
+                ChatMemberStatus.MEMBER
+            ]:
+                all_subbed = False
+                break # Not subbed to at least one
+        except TelegramBadRequest as e:
+            logging.error(f"FS Check TelegramBadRequest for User {user_id} in {clean_chat_id}: {e}")
+            all_subbed = False
+            break
+        except TelegramForbiddenError as e:
+            logging.error(f"FS Check TelegramForbiddenError for User {user_id} in {clean_chat_id}: {e}")
+            all_subbed = False
+            break
+        except Exception as e:
+            # Jika bot bukan admin channel atau channel tidak ada.
+            logging.error(f"FS Check Error in {clean_chat_id}: {e}")
+            all_subbed = False
+            break
+
+    if all_subbed:
+        fs_cache.set_valid(user_id)
+        return True
+    else:
         fs_cache.invalidate(user_id)
-        return False
-    except TelegramBadRequest as e:
-        logging.error(f"FS Check TelegramBadRequest for User {user_id} in {clean_chat_id}: {e}")
-        return False
-    except TelegramForbiddenError as e:
-        logging.error(f"FS Check TelegramForbiddenError for User {user_id} in {clean_chat_id}: {e}")
-        return False
-    except Exception as e:
-        # Jika bot bukan admin channel atau channel tidak ada.
-        logging.error(f"FS Check Error in {clean_chat_id}: {e}")
         return False
 
 @router.message(CommandStart(), F.chat.type == "private")
@@ -81,16 +91,77 @@ async def cmd_start(message: Message):
 @router.callback_query(F.data == "check_fs")
 async def verify_fs(callback: CallbackQuery):
     user_id = callback.from_user.id
-    is_subbed = await check_force_sub(user_id, callback.bot, use_cache=False)
     
-    if is_subbed:
+    fs_status = await db.get_setting("force_sub")
+    channels = await db.get_fs_channels()
+
+    if fs_status != "1" or not channels:
         try:
             await callback.message.delete()
         except:
             pass
-        await callback.message.answer("✅ *Verifikasi berhasil!*\n\nAnda sudah bergabung ke channel dan sekarang dapat menggunakan bot.", parse_mode="Markdown")
+        await callback.message.answer("✅ *Verifikasi berhasil!*\n\nAnda sekarang dapat menggunakan bot.", parse_mode="Markdown")
+        return
+
+    all_subbed = True
+    status_text = ""
+    buttons = []
+    
+    for idx, channel in enumerate(channels, 1):
+        clean_chat_id = channel.strip()
+        if "t.me/" in clean_chat_id:
+            part = clean_chat_id.split("t.me/")[-1]
+            if not part.startswith("+") and not part.startswith("joinchat/"):
+                clean_chat_id = "@" + part
+        elif not clean_chat_id.startswith("@") and not clean_chat_id.lstrip("-").isdigit():
+            clean_chat_id = "@" + clean_chat_id
+
+        is_subbed = False
+        try:
+            member = await callback.bot.get_chat_member(chat_id=clean_chat_id, user_id=user_id)
+            if member.status in [ChatMemberStatus.CREATOR, ChatMemberStatus.ADMINISTRATOR, ChatMemberStatus.MEMBER]:
+                is_subbed = True
+        except Exception as e:
+            logging.error(f"FS Check Error in {clean_chat_id} for user {user_id}: {e}")
+            is_subbed = False
+            
+        if not is_subbed:
+            all_subbed = False
+        
+        icon = "✅" if is_subbed else "❌"
+        display_name = clean_chat_id if not clean_chat_id.startswith("-100") else f"Channel {idx}"
+        status_text += f"📢 {display_name} {icon}\n"
+        
+        link = channel if channel.startswith("http") else f"https://t.me/{channel.replace('@', '')}"
+        buttons.append([inline.InlineKeyboardButton(text=f"📢 Gabung Channel {idx}", url=link)])
+
+    if all_subbed:
+        fs_cache.set_valid(user_id)
+        try:
+            await callback.message.delete()
+        except:
+            pass
+        await callback.message.answer("✅ *Verifikasi berhasil!*\n\nAnda sekarang dapat menggunakan bot.", parse_mode="Markdown")
     else:
-        await callback.answer("❌ Anda belum bergabung ke channel. Silakan join terlebih dahulu.", show_alert=True)
+        fs_cache.invalidate(user_id)
+        fs_msg = "❌ Anda harus bergabung ke seluruh channel berikut:\n\n" + status_text
+        buttons.append([inline.InlineKeyboardButton(text="✅ Cek Keanggotaan", callback_data="check_fs")])
+        keyboard = inline.InlineKeyboardMarkup(inline_keyboard=buttons)
+        try:
+            await callback.message.edit_text(fs_msg, reply_markup=keyboard)
+        except Exception:
+            pass
+        await callback.answer("❌ Anda belum bergabung ke seluruh channel.", show_alert=True)
+
+@router.callback_query(F.data == "verify_bot")
+async def handle_verify_bot(callback: CallbackQuery):
+    user_id = callback.from_user.id
+    await db.set_bot_verification(user_id)
+    try:
+        await callback.message.delete()
+    except:
+        pass
+    await callback.message.answer("✅ Verifikasi berhasil. Silakan gunakan bot kembali.")
 
 def get_message_url(chat_id: str | int, message_id: int) -> str:
     chat_id_str = str(chat_id)

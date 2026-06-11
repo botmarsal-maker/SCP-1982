@@ -19,7 +19,7 @@ router.callback_query.filter(IsOwner())
 class AdminState(StatesGroup):
     waiting_for_prefix = State()
     waiting_for_broadcast = State()
-    waiting_for_fs_channel = State()
+    waiting_for_add_fs = State()
     waiting_for_welcome = State()
     waiting_for_fs_msg = State()
     waiting_for_delete_msg_id = State()
@@ -28,15 +28,73 @@ class AdminState(StatesGroup):
     waiting_for_del_badword = State()
     waiting_for_antispam_cooldown = State()
     waiting_for_daily_limit = State()
+    waiting_for_fbot_username = State()
+    waiting_for_fbot_duration = State()
+    waiting_for_admin_pin = State()
 
 @router.message(Command("admin"))
-async def admin_panel(message: Message):
-    await message.answer("🛠 *Admin Panel*", reply_markup=inline.admin_keyboard(), parse_mode="Markdown")
+async def admin_panel(message: Message, state: FSMContext):
+    import time
+    user_id = message.from_user.id
+    expired_at = await db.get_admin_session(user_id)
+    
+    if expired_at > time.time():
+        await message.answer("🛠 *Admin Panel*", reply_markup=inline.admin_keyboard(), parse_mode="Markdown")
+    else:
+        # Require PIN
+        await state.set_state(AdminState.waiting_for_admin_pin)
+        await message.answer("🔑 *SECURE SECURITY LOGIN*\n\nSilakan masukkan PIN Administrator Anda di bawah ini:\n\n_Sesi login valid selama 20 menit._", parse_mode="Markdown")
+
+@router.message(AdminState.waiting_for_admin_pin)
+async def process_admin_pin(message: Message, state: FSMContext):
+    from config import OWNER_PIN
+    import hmac
+    
+    # Try to delete the PIN message so it's not visible
+    try:
+        await message.delete()
+    except:
+        pass
+        
+    if not OWNER_PIN:
+        import logging
+        logging.error("OWNER_PIN is not configured in Environment Variables.")
+        await message.answer("❌ Terjadi kesalahan pada konfigurasi sistem. Silakan cek log bot.")
+        await state.clear()
+        return
+
+    # Secure string comparison using hmac
+    # convert both to bytes before compare
+    pin_bytes = message.text.encode('utf-8')
+    owner_pin_bytes = OWNER_PIN.encode('utf-8')
+    
+    if len(pin_bytes) == len(owner_pin_bytes) and hmac.compare_digest(pin_bytes, owner_pin_bytes):
+        # Create session
+        await db.set_admin_session(message.from_user.id, 1200) # 20 minutes
+        await state.clear()
+        await message.answer("✅ Login berhasil.\n\nSelamat datang Administrator.")
+        await message.answer("🛠 *Admin Panel*", reply_markup=inline.admin_keyboard(), parse_mode="Markdown")
+    else:
+        await message.answer("❌ PIN Administrator salah.\n\nSilakan coba kembali.")
+
+@router.callback_query(F.data == "admin_logout")
+async def admin_logout(callback: CallbackQuery, state: FSMContext):
+    await db.delete_admin_session(callback.from_user.id)
+    await state.clear()
+    await callback.message.edit_text("✅ Logout berhasil.")
 
 @router.callback_query(F.data == "admin_main")
 async def back_to_admin(callback: CallbackQuery, state: FSMContext):
+    import time
+    user_id = callback.from_user.id
+    expired_at = await db.get_admin_session(user_id)
+    
     await state.clear()
-    await callback.message.edit_text("🛠 *Admin Panel*", reply_markup=inline.admin_keyboard(), parse_mode="Markdown")
+    if expired_at > time.time():
+        await callback.message.edit_text("🛠 *Admin Panel*", reply_markup=inline.admin_keyboard(), parse_mode="Markdown")
+    else:
+        await state.set_state(AdminState.waiting_for_admin_pin)
+        await callback.message.edit_text("🔑 *SECURE SECURITY LOGIN*\n\nSilakan masukkan PIN Administrator Anda di bawah ini:\n\n_Sesi login valid selama 20 menit._", parse_mode="Markdown")
 
 @router.callback_query(F.data == "admin_stats")
 async def admin_stats(callback: CallbackQuery):
@@ -68,8 +126,7 @@ async def admin_logs_view(callback: CallbackQuery):
 @router.callback_query(F.data == "admin_fs")
 async def admin_fs_menu(callback: CallbackQuery):
     fs_status = await db.get_setting("force_sub")
-    fs_channel = await db.get_setting("fs_channel")
-    text = f"🔒 *Force Subscribe Manager*\n\nChannel saat ini: `{fs_channel or 'Belum diset'}`"
+    text = f"🔒 *Force Subscribe Manager*"
     await callback.message.edit_text(text, reply_markup=inline.fs_settings_keyboard(fs_status), parse_mode="Markdown")
 
 @router.callback_query(F.data == "toggle_fs")
@@ -78,6 +135,54 @@ async def toggle_fs(callback: CallbackQuery):
     new_status = "0" if fs_status == "1" else "1"
     await db.set_setting("force_sub", new_status)
     await admin_fs_menu(callback)
+
+@router.callback_query(F.data == "manage_fs")
+async def manage_fs_menu(callback: CallbackQuery):
+    channels = await db.get_fs_channels()
+    text = f"📢 *Kelola Force Subscribe*\n\nTotal Channel FS: `{len(channels)}`\n\nPilih tindakan:"
+    await callback.message.edit_text(text, reply_markup=inline.manage_fs_keyboard(), parse_mode="Markdown")
+
+@router.callback_query(F.data == "add_fs")
+async def ask_add_fs(callback: CallbackQuery, state: FSMContext):
+    await callback.message.edit_text("Silakan kirim Channel ID atau Username Channel.\n\nContoh:\n`-1001234567890`\natau\n`@channelanda`", parse_mode="Markdown", reply_markup=inline.cancel_keyboard())
+    await state.set_state(AdminState.waiting_for_add_fs)
+
+@router.message(AdminState.waiting_for_add_fs)
+async def process_add_fs(message: Message, state: FSMContext):
+    channel_id = message.text.strip()
+    success = await db.add_fs_channel(channel_id)
+    await state.clear()
+    if success:
+        await message.answer("✅ Channel Force Subscribe berhasil ditambahkan.", reply_markup=inline.InlineKeyboardMarkup(inline_keyboard=[[inline.InlineKeyboardButton(text="🔙 Kembali", callback_data="manage_fs")]]))
+    else:
+        await message.answer("❌ Channel sudah ada di database.", reply_markup=inline.InlineKeyboardMarkup(inline_keyboard=[[inline.InlineKeyboardButton(text="🔙 Kembali", callback_data="manage_fs")]]))
+
+@router.callback_query(F.data == "del_fs")
+async def show_del_fs(callback: CallbackQuery):
+    channels = await db.get_fs_channels()
+    if not channels:
+        await callback.message.edit_text("Tidak ada channel FS.", reply_markup=inline.InlineKeyboardMarkup(inline_keyboard=[[inline.InlineKeyboardButton(text="🔙 Kembali", callback_data="manage_fs")]]))
+        return
+    text = "Pilih channel yang ingin dihapus:"
+    await callback.message.edit_text(text, reply_markup=inline.delete_fs_keyboard(channels))
+
+@router.callback_query(F.data.startswith("del_fs_"))
+async def process_del_fs(callback: CallbackQuery):
+    channel_id = callback.data.replace("del_fs_", "")
+    await db.remove_fs_channel(channel_id)
+    await callback.message.edit_text("✅ Channel Force Subscribe berhasil dihapus.", reply_markup=inline.InlineKeyboardMarkup(inline_keyboard=[[inline.InlineKeyboardButton(text="🔙 Kembali", callback_data="manage_fs")]]))
+
+@router.callback_query(F.data == "list_fs")
+async def list_fs(callback: CallbackQuery):
+    channels = await db.get_fs_channels()
+    if not channels:
+        text = "Belum ada channel FS tersimpan."
+    else:
+        text = "📋 *Daftar Force Subscribe*\n\n"
+        for i, ch in enumerate(channels, 1):
+            text += f"{i}. {ch}\n"
+        text += f"\nTotal: {len(channels)} Channel"
+    await callback.message.edit_text(text, reply_markup=inline.InlineKeyboardMarkup(inline_keyboard=[[inline.InlineKeyboardButton(text="🔙 Kembali", callback_data="manage_fs")]]), parse_mode="Markdown")
 
 @router.callback_query(F.data == "admin_settings")
 async def admin_settings_menu(callback: CallbackQuery):
@@ -101,17 +206,6 @@ async def set_prefix(message: Message, state: FSMContext):
     await db.set_setting("prefix", message.text)
     await state.clear()
     await message.answer("✅ Prefix berhasil diubah!", reply_markup=inline.InlineKeyboardMarkup(inline_keyboard=[[inline.InlineKeyboardButton(text="🔙 Kembali", callback_data="admin_main")]]))
-
-@router.callback_query(F.data == "set_fs_channel")
-async def ask_fs_channel(callback: CallbackQuery, state: FSMContext):
-    await callback.message.edit_text("Kirimkan username/link channel untuk Force Subscribe (contoh: @mychannel atau https://t.me/mychannel):", reply_markup=inline.cancel_keyboard())
-    await state.set_state(AdminState.waiting_for_fs_channel)
-
-@router.message(AdminState.waiting_for_fs_channel)
-async def set_fs_channel(message: Message, state: FSMContext):
-    await db.set_setting("fs_channel", message.text)
-    await state.clear()
-    await message.answer("✅ Channel Force Subscribe berhasil diubah!", reply_markup=inline.InlineKeyboardMarkup(inline_keyboard=[[inline.InlineKeyboardButton(text="🔙 Kembali", callback_data="admin_main")]]))
 
 @router.callback_query(F.data == "set_welcome")
 async def ask_welcome(callback: CallbackQuery, state: FSMContext):
@@ -358,3 +452,43 @@ async def stats_dailylimit(callback: CallbackQuery):
             
     await callback.message.edit_text(text, reply_markup=inline.InlineKeyboardMarkup(inline_keyboard=[[inline.InlineKeyboardButton(text="🔙 Kembali", callback_data="rule_dailylimit")]]), parse_mode="Markdown")
 
+@router.callback_query(F.data == "admin_fbot")
+async def admin_fbot_menu(callback: CallbackQuery):
+    enabled = await db.get_setting("force_bot_enabled")
+    username = await db.get_setting("force_bot_username")
+    duration = await db.get_setting("force_bot_duration")
+    status = "Aktif" if enabled == "1" else "Nonaktif"
+    text = f"🤖 *Force Bot Verification*\n\nStatus: `{status}`\n\nBot Tujuan:\n{username}\n\nMasa Berlaku:\n{duration} Jam"
+    await callback.message.edit_text(text, reply_markup=inline.admin_fbot_keyboard(enabled), parse_mode="Markdown")
+
+@router.callback_query(F.data == "toggle_fbot")
+async def toggle_fbot(callback: CallbackQuery):
+    enabled = await db.get_setting("force_bot_enabled")
+    new_val = "0" if enabled == "1" else "1"
+    await db.set_setting("force_bot_enabled", new_val)
+    await admin_fbot_menu(callback)
+
+@router.callback_query(F.data == "set_fbot_username")
+async def ask_fbot_username(callback: CallbackQuery, state: FSMContext):
+    await callback.message.edit_text("Kirimkan username bot tujuan (contoh: @BeliTonBot):", reply_markup=inline.cancel_keyboard())
+    await state.set_state(AdminState.waiting_for_fbot_username)
+
+@router.message(AdminState.waiting_for_fbot_username)
+async def do_set_fbot_username(message: Message, state: FSMContext):
+    await db.set_setting("force_bot_username", message.text)
+    await state.clear()
+    await message.answer("✅ Username bot berhasil diubah!", reply_markup=inline.InlineKeyboardMarkup(inline_keyboard=[[inline.InlineKeyboardButton(text="🔙 Kembali", callback_data="admin_fbot")]]))
+
+@router.callback_query(F.data == "set_fbot_duration")
+async def ask_fbot_duration(callback: CallbackQuery, state: FSMContext):
+    await callback.message.edit_text("Kirimkan durasi verifikasi dalam satuan jam (contoh: 24 untuk 24 Jam):", reply_markup=inline.cancel_keyboard())
+    await state.set_state(AdminState.waiting_for_fbot_duration)
+
+@router.message(AdminState.waiting_for_fbot_duration)
+async def do_set_fbot_duration(message: Message, state: FSMContext):
+    if not message.text.isdigit():
+        await message.answer("❌ Harap masukkan angka yang valid.")
+        return
+    await db.set_setting("force_bot_duration", message.text)
+    await state.clear()
+    await message.answer("✅ Durasi verifikasi berhasil diubah!", reply_markup=inline.InlineKeyboardMarkup(inline_keyboard=[[inline.InlineKeyboardButton(text="🔙 Kembali", callback_data="admin_fbot")]]))
