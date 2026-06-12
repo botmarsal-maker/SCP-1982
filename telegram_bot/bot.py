@@ -18,12 +18,13 @@ import clone_manager
 
 logging.basicConfig(level=logging.INFO, stream=sys.stdout)
 
+dp = Dispatcher()
+    
 async def main():
     await db.init_db()
     await clone_db.init_db()
     
     bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
-    dp = Dispatcher()
     
     # Daftarkan context middleware paling luar
     dp.update.middleware(BotContextMiddleware())
@@ -61,6 +62,7 @@ async def main():
     
     # Run active clones
     clones = await clone_db.get_clones()
+    logging.info(f"[CLONE] loaded={len(clones)}")
     for clone in clones:
         if clone['status'] == 'active':
             await clone_manager.start_clone(clone['bot_token'], clone['bot_id'], dp)

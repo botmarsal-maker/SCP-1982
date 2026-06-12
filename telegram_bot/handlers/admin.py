@@ -23,6 +23,7 @@ router.callback_query.middleware(AdminSessionMiddleware())
 
 class AdminState(StatesGroup):
     waiting_for_prefix = State()
+    waiting_for_target_channel = State()
     waiting_for_broadcast = State()
     waiting_for_add_fs = State()
     waiting_for_welcome = State()
@@ -243,6 +244,20 @@ async def ask_welcome(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text("Kirimkan pesan welcome yang baru:", reply_markup=inline.cancel_keyboard())
     await state.set_state(AdminState.waiting_for_welcome)
 
+@router.callback_query(F.data == "set_target_channel")
+async def ask_target_channel(callback: CallbackQuery, state: FSMContext):
+    await callback.message.edit_text("Kirimkan ID atau Username Channel tujuan menfess (contoh: -10012345 atau @ChannelMenfess)\n\nPastikan bot sudah dijadikan admin di channel tersebut.", reply_markup=inline.cancel_keyboard())
+    await state.set_state(AdminState.waiting_for_target_channel)
+
+@router.message(AdminState.waiting_for_target_channel)
+async def do_set_target_channel(message: Message, state: FSMContext):
+    if not message.text:
+        await message.answer("❌ Harap kirimkan pesan teks.")
+        return
+    await db.set_setting("target_channel", message.text.strip())
+    await state.clear()
+    await message.answer("✅ Target Channel berhasil diubah!", reply_markup=inline.InlineKeyboardMarkup(inline_keyboard=[[inline.InlineKeyboardButton(text="🔙 Kembali", callback_data="admin_main")]]))
+
 @router.message(AdminState.waiting_for_welcome)
 async def set_welcome(message: Message, state: FSMContext):
     if not message.text:
@@ -306,6 +321,11 @@ async def ask_delete_msg(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text("Kirimkan Message ID dari pesan di channel yang ingin dihapus:", reply_markup=inline.cancel_keyboard())
     await state.set_state(AdminState.waiting_for_delete_msg_id)
 
+async def get_target_channel():
+    from config import CHANNEL_ID
+    target = await db.get_setting("target_channel")
+    return target if target else CHANNEL_ID
+
 @router.message(AdminState.waiting_for_delete_msg_id)
 async def do_delete_msg(message: Message, state: FSMContext):
     if not message.text:
@@ -313,7 +333,6 @@ async def do_delete_msg(message: Message, state: FSMContext):
         return
 
     await state.clear()
-    from config import CHANNEL_ID
     try:
         msg_id = int(message.text)
         from globals import current_bot_id
@@ -324,7 +343,8 @@ async def do_delete_msg(message: Message, state: FSMContext):
                 await message.answer("❌ Pesan ini tidak terdaftar di database bot ini.")
                 return
                 
-        await message.bot.delete_message(chat_id=CHANNEL_ID, message_id=msg_id)
+        target_channel = await get_target_channel()
+        await message.bot.delete_message(chat_id=target_channel, message_id=msg_id)
         await message.answer("✅ Pesan berhasil dihapus dari channel!", reply_markup=inline.InlineKeyboardMarkup(inline_keyboard=[[inline.InlineKeyboardButton(text="🔙 Kembali", callback_data="admin_main")]]))
     except ValueError:
         await message.answer("❌ Message ID harus berupa angka.", reply_markup=inline.InlineKeyboardMarkup(inline_keyboard=[[inline.InlineKeyboardButton(text="🔙 Kembali", callback_data="admin_main")]]))

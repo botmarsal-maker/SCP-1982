@@ -60,6 +60,7 @@ def general_settings_keyboard(maintenance: str) -> InlineKeyboardMarkup:
     mt_text = "🟢 Aktif" if maintenance == "1" else "🔴 Nonaktif"
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=f"Maintenance: {mt_text}", callback_data="toggle_mt")],
+        [InlineKeyboardButton(text="Ubah Target Channel", callback_data="set_target_channel")],
         [InlineKeyboardButton(text="Ubah Welcome Msg", callback_data="set_welcome")],
         [InlineKeyboardButton(text="Ubah Pesan FS", callback_data="set_fs_msg")],
         [InlineKeyboardButton(text="🗑 Hapus Menfess", callback_data="delete_menfess")],

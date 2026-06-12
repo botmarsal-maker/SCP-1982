@@ -185,6 +185,11 @@ def get_message_url(chat_id: str | int, message_id: int) -> str:
     else:
         return f"https://t.me/c/{chat_id_str.strip('-')}/{message_id}"
 
+async def get_target_channel():
+    from config import CHANNEL_ID
+    target = await db.get_setting("target_channel")
+    return target if target else CHANNEL_ID
+    
 @router.message(F.chat.type == "private")
 async def process_menfess(message: Message):
     user_id = message.from_user.id
@@ -283,26 +288,27 @@ async def process_menfess(message: Message):
     
     try:
         sent_msg = None
+        target_channel = await get_target_channel()
         if message.text:
             text = message.text
             # Telegram text limit is 4096
             if len(text) > 4096:
                 text = text[:4093] + "..."
-            sent_msg = await message.bot.send_message(chat_id=CHANNEL_ID, text=text)
+            sent_msg = await message.bot.send_message(chat_id=target_channel, text=text)
             content = message.text
         elif message.photo:
             caption = prep_caption(message.caption)
-            sent_msg = await message.bot.send_photo(chat_id=CHANNEL_ID, photo=message.photo[-1].file_id, caption=caption)
+            sent_msg = await message.bot.send_photo(chat_id=target_channel, photo=message.photo[-1].file_id, caption=caption)
             content = message.caption or "Photo"
             msg_type = "photo"
         elif message.video:
             caption = prep_caption(message.caption)
-            sent_msg = await message.bot.send_video(chat_id=CHANNEL_ID, video=message.video.file_id, caption=caption)
+            sent_msg = await message.bot.send_video(chat_id=target_channel, video=message.video.file_id, caption=caption)
             content = message.caption or "Video"
             msg_type = "video"
         elif message.document:
             caption = prep_caption(message.caption)
-            sent_msg = await message.bot.send_document(chat_id=CHANNEL_ID, document=message.document.file_id, caption=caption)
+            sent_msg = await message.bot.send_document(chat_id=target_channel, document=message.document.file_id, caption=caption)
             content = message.caption or "Document"
             msg_type = "document"
         else:
@@ -313,7 +319,7 @@ async def process_menfess(message: Message):
             await db.log_message(user_id, username, msg_type, content, sent_msg.message_id)
             await db.add_menfess_post(user_id, sent_msg.message_id)
             await db.increment_daily_usage(user_id, today_str)
-            post_url = get_message_url(CHANNEL_ID, sent_msg.message_id)
+            post_url = get_message_url(target_channel, sent_msg.message_id)
             await message.answer(
                 "✅ Pesan berhasil dikirim! 🚀\n\nGunakan tombol di bawah untuk melihat postingan Anda.",
                 reply_markup=inline.see_post_keyboard(post_url)
