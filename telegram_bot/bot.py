@@ -7,19 +7,26 @@ from aiogram.enums import ParseMode
 
 from config import BOT_TOKEN
 from database import db
-from handlers import user, admin, group
+from database.clone_db import clone_db
+from handlers import user, admin, group, clone_admin
 from middlewares.throttling import ThrottlingMiddleware
 from middlewares.answer_callback import AnswerCallbackMiddleware
 from middlewares.force_sub import ForceSubscribeMiddleware
 from middlewares.force_bot import ForceBotMiddleware
+from middlewares.bot_context import BotContextMiddleware
+import clone_manager
 
 logging.basicConfig(level=logging.INFO, stream=sys.stdout)
 
 async def main():
     await db.init_db()
+    await clone_db.init_db()
     
     bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     dp = Dispatcher()
+    
+    # Daftarkan context middleware paling luar
+    dp.update.middleware(BotContextMiddleware())
     
     # Global Error Handling (Prioritas 4)
     @dp.errors()
@@ -44,12 +51,20 @@ async def main():
     # Daftarkan middleware callback
     dp.callback_query.middleware(AnswerCallbackMiddleware())
     
+    dp.include_router(clone_admin.router)
     dp.include_router(admin.router)
     dp.include_router(user.router)
     dp.include_router(group.router)
     
     logging.info("Bot started!")
     await bot.delete_webhook(drop_pending_updates=True)
+    
+    # Run active clones
+    clones = await clone_db.get_clones()
+    for clone in clones:
+        if clone['status'] == 'active':
+            await clone_manager.start_clone(clone['bot_token'], clone['bot_id'], dp)
+            
     await dp.start_polling(bot)
 
 if __name__ == "__main__":

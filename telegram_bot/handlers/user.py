@@ -3,7 +3,8 @@ from aiogram.types import Message, CallbackQuery, ChatMemberUpdated
 from aiogram.filters import CommandStart
 from aiogram.enums import ChatMemberStatus
 
-from config import OWNER_ID, CHANNEL_ID
+from config import CHANNEL_ID
+from globals import get_bot_owner
 from database import db
 from keyboards import inline
 from database.cache import fs_cache
@@ -90,8 +91,9 @@ async def cmd_start(message: Message):
     username = message.from_user.username or str(user_id)
     await db.add_user(user_id, username)
     
+    owner = await get_bot_owner()
     maintenance = await db.get_setting("maintenance")
-    if maintenance == "1" and user_id != OWNER_ID:
+    if maintenance == "1" and user_id != owner:
         await message.answer("🚧 Bot sedang dalam masa perbaikan (maintenance). Silakan coba lagi nanti.")
         return
 
@@ -191,8 +193,9 @@ async def process_menfess(message: Message):
     if message.text and message.text.startswith('/'):
         return # Ignore other commands
         
+    owner = await get_bot_owner()
     maintenance = await db.get_setting("maintenance")
-    if maintenance == "1" and user_id != OWNER_ID:
+    if maintenance == "1" and user_id != owner:
         await message.answer("🚧 Bot sedang dalam masa perbaikan (maintenance).")
         return
 
@@ -213,12 +216,18 @@ async def process_menfess(message: Message):
     if anti_spam_enabled == "1":
         cooldown = int(await db.get_setting("anti_spam_cooldown") or "10")
         current_time = time.time()
-        last_time = user_last_message.get(user_id, 0)
+        
+        from globals import current_bot_id
+        bot_id = current_bot_id.get("main")
+        if bot_id not in user_last_message:
+            user_last_message[bot_id] = {}
+            
+        last_time = user_last_message[bot_id].get(user_id, 0)
         if current_time - last_time < cooldown:
             wait_time = int(cooldown - (current_time - last_time))
             await message.answer(f"❌ *Pesan Ditolak!*\n\nHarap tunggu {wait_time} detik sebelum mengirim pesan lagi.", parse_mode="Markdown")
             return
-        user_last_message[user_id] = current_time
+        user_last_message[bot_id][user_id] = current_time
         
     # 2. Maksimal Karakter
     max_chars_enabled = await db.get_setting("max_chars_enabled")
@@ -253,9 +262,8 @@ async def process_menfess(message: Message):
             
     # 6. Limit Pesan Harian
     import datetime
-    from config import OWNER_ID
     today_str = datetime.datetime.now().strftime('%Y-%m-%d')
-    if user_id != OWNER_ID:
+    if user_id != owner:
         daily_limit_enabled = await db.get_setting("daily_limit_enabled")
         if daily_limit_enabled == "1":
             limit = int(await db.get_setting("daily_limit_count") or "5")

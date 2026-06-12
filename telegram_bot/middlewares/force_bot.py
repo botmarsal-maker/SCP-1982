@@ -23,8 +23,11 @@ class ForceBotMiddleware(BaseMiddleware):
             
         user_id = user.id
         
+        from globals import get_bot_owner
+        owner = await get_bot_owner()
+        
         # Admin bypass
-        if user_id == OWNER_ID:
+        if user_id == owner:
             return await handler(event, data)
             
         # Ignore checks if it's the verify_bot callback itself or check_fs

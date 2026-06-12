@@ -1,10 +1,18 @@
 import aiosqlite
 from database.cache import settings_cache
+from globals import current_bot_id
 
-DB_NAME = "bot.db"
+def get_db_path():
+    import os
+    data_dir = os.environ.get("DATA_DIR", ".")
+    bot_id = current_bot_id.get("main")
+    if bot_id == "main" or not bot_id:
+        return os.path.join(data_dir, "bot.db")
+    return os.path.join(data_dir, f"clone_{bot_id}.db")
 
 async def init_db():
-    async with aiosqlite.connect(DB_NAME) as db:
+    db_path = get_db_path()
+    async with aiosqlite.connect(db_path) as db:
         await db.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 user_id INTEGER PRIMARY KEY,
@@ -121,7 +129,7 @@ async def init_db():
     await cleanup_old_logs()
 
 async def _load_settings_to_cache():
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with aiosqlite.connect(get_db_path()) as db:
         async with db.execute("SELECT key, value FROM settings") as cursor:
             rows = await cursor.fetchall()
             settings_dict = {row[0]: row[1] for row in rows}
@@ -129,7 +137,7 @@ async def _load_settings_to_cache():
 
 async def cleanup_old_logs():
     """Menghapus log yang lebih tua dari 30 hari (Housekeeping)"""
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with aiosqlite.connect(get_db_path()) as db:
         await db.execute("DELETE FROM logs WHERE sent_at <= datetime('now', '-30 days')")
         await db.commit()
 
@@ -139,7 +147,7 @@ async def get_setting(key: str) -> str:
     if val is not None:
         return val
         
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with aiosqlite.connect(get_db_path()) as db:
         async with db.execute("SELECT value FROM settings WHERE key=?", (key,)) as cursor:
             row = await cursor.fetchone()
             val = row[0] if row else None
@@ -148,35 +156,35 @@ async def get_setting(key: str) -> str:
             return val
 
 async def set_setting(key: str, value: str):
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with aiosqlite.connect(get_db_path()) as db:
         await db.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, value))
         await db.commit()
     # Update cache agar query berikut mendapatkan nilai baru
     settings_cache.set(key, value)
 
 async def add_user(user_id: int, username: str):
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with aiosqlite.connect(get_db_path()) as db:
         await db.execute("INSERT OR IGNORE INTO users (user_id, username) VALUES (?, ?)", (user_id, username))
         await db.commit()
 
 async def get_all_users():
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with aiosqlite.connect(get_db_path()) as db:
         async with db.execute("SELECT user_id FROM users") as cursor:
             rows = await cursor.fetchall()
             return [row[0] for row in rows]
 
 async def log_message(user_id: int, username: str, msg_type: str, content: str, msg_id: int = 0):
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with aiosqlite.connect(get_db_path()) as db:
         await db.execute("INSERT INTO logs (user_id, username, message_type, message_content, message_id) VALUES (?, ?, ?, ?, ?)", (user_id, username, msg_type, content, msg_id))
         await db.commit()
 
 async def get_recent_logs(limit=10):
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with aiosqlite.connect(get_db_path()) as db:
         async with db.execute("SELECT user_id, username, message_type, sent_at FROM logs ORDER BY id DESC LIMIT ?", (limit,)) as cursor:
             return await cursor.fetchall()
 
 async def get_stats():
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with aiosqlite.connect(get_db_path()) as db:
         async with db.execute("SELECT COUNT(*) FROM users") as cursor:
             users_count = (await cursor.fetchone())[0]
         async with db.execute("SELECT COUNT(*) FROM logs") as cursor:
@@ -184,18 +192,18 @@ async def get_stats():
         return users_count, logs_count
 
 async def add_menfess_post(user_id: int, channel_message_id: int):
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with aiosqlite.connect(get_db_path()) as db:
         await db.execute("INSERT INTO menfess_posts (user_id, channel_message_id) VALUES (?, ?)", (user_id, channel_message_id))
         await db.commit()
 
 async def get_menfess_owner(channel_message_id: int):
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with aiosqlite.connect(get_db_path()) as db:
         async with db.execute("SELECT user_id FROM menfess_posts WHERE channel_message_id=?", (channel_message_id,)) as cursor:
             row = await cursor.fetchone()
             return row[0] if row else None
 
 async def add_badword(word: str):
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with aiosqlite.connect(get_db_path()) as db:
         try:
             await db.execute("INSERT INTO badwords (word) VALUES (?)", (word.lower(),))
             await db.commit()
@@ -204,24 +212,24 @@ async def add_badword(word: str):
             return False
 
 async def remove_badword(word: str):
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with aiosqlite.connect(get_db_path()) as db:
         await db.execute("DELETE FROM badwords WHERE word=?", (word.lower(),))
         await db.commit()
 
 async def get_all_badwords():
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with aiosqlite.connect(get_db_path()) as db:
         async with db.execute("SELECT word FROM badwords") as cursor:
             rows = await cursor.fetchall()
             return [row[0] for row in rows]
 
 async def get_daily_usage(user_id: int, date_str: str) -> int:
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with aiosqlite.connect(get_db_path()) as db:
         async with db.execute("SELECT message_count FROM daily_limit_usage WHERE user_id=? AND usage_date=?", (user_id, date_str)) as cursor:
             row = await cursor.fetchone()
             return row[0] if row else 0
 
 async def increment_daily_usage(user_id: int, date_str: str):
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with aiosqlite.connect(get_db_path()) as db:
         await db.execute("""
             INSERT INTO daily_limit_usage (user_id, usage_date, message_count) 
             VALUES (?, ?, 1) 
@@ -231,7 +239,7 @@ async def increment_daily_usage(user_id: int, date_str: str):
         await db.commit()
 
 async def get_daily_stats(date_str: str):
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with aiosqlite.connect(get_db_path()) as db:
         async with db.execute("SELECT COUNT(DISTINCT user_id), SUM(message_count) FROM daily_limit_usage WHERE usage_date=?", (date_str,)) as cursor:
             row = await cursor.fetchone()
             total_users = row[0] if row and row[0] else 0
@@ -250,7 +258,7 @@ async def get_daily_stats(date_str: str):
         return total_users, total_messages, top_users
 
 async def get_bot_verification(user_id: int) -> float:
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with aiosqlite.connect(get_db_path()) as db:
         async with db.execute("SELECT verified_at FROM bot_verifications WHERE user_id=?", (user_id,)) as cursor:
             row = await cursor.fetchone()
             return row[0] if row else 0.0
@@ -258,7 +266,7 @@ async def get_bot_verification(user_id: int) -> float:
 async def set_bot_verification(user_id: int):
     import time
     now = time.time()
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with aiosqlite.connect(get_db_path()) as db:
         await db.execute("""
             INSERT INTO bot_verifications (user_id, verified_at) 
             VALUES (?, ?) 
@@ -268,13 +276,13 @@ async def set_bot_verification(user_id: int):
         await db.commit()
 
 async def get_fs_channels() -> list:
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with aiosqlite.connect(get_db_path()) as db:
         async with db.execute("SELECT channel_id FROM force_sub_channels") as cursor:
             rows = await cursor.fetchall()
             return [row[0] for row in rows]
 
 async def add_fs_channel(channel_id: str) -> bool:
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with aiosqlite.connect(get_db_path()) as db:
         try:
             await db.execute("INSERT INTO force_sub_channels (channel_id) VALUES (?)", (channel_id,))
             await db.commit()
@@ -283,12 +291,12 @@ async def add_fs_channel(channel_id: str) -> bool:
             return False
 
 async def remove_fs_channel(channel_id: str):
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with aiosqlite.connect(get_db_path()) as db:
         await db.execute("DELETE FROM force_sub_channels WHERE channel_id=?", (channel_id,))
         await db.commit()
 
 async def get_admin_session(user_id: int) -> float:
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with aiosqlite.connect(get_db_path()) as db:
         async with db.execute("SELECT expired_at FROM admin_sessions WHERE user_id=?", (user_id,)) as cursor:
             row = await cursor.fetchone()
             return row[0] if row else 0.0
@@ -297,7 +305,7 @@ async def set_admin_session(user_id: int, duration_seconds: int = 1200):
     import time
     now = time.time()
     expired_at = now + duration_seconds
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with aiosqlite.connect(get_db_path()) as db:
         await db.execute("""
             INSERT INTO admin_sessions (user_id, login_at, expired_at) 
             VALUES (?, ?, ?) 
@@ -307,7 +315,7 @@ async def set_admin_session(user_id: int, duration_seconds: int = 1200):
         await db.commit()
 
 async def delete_admin_session(user_id: int):
-    async with aiosqlite.connect(DB_NAME) as db:
+    async with aiosqlite.connect(get_db_path()) as db:
         await db.execute("DELETE FROM admin_sessions WHERE user_id=?", (user_id,))
         await db.commit()
 

@@ -6,8 +6,8 @@ def fs_keyboard(channel_link: str) -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="✅ Cek Keanggotaan", callback_data="check_fs")]
     ])
 
-def admin_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
+def admin_keyboard(is_main_bot: bool = False) -> InlineKeyboardMarkup:
+    buttons = [
         [InlineKeyboardButton(text="📢 Broadcast", callback_data="admin_broadcast")],
         [InlineKeyboardButton(text="🚀 Ubah Prefix", callback_data="admin_prefix")],
         [InlineKeyboardButton(text="🔒 Force Sub", callback_data="admin_fs")],
@@ -16,7 +16,20 @@ def admin_keyboard() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="⚙️ Pengaturan", callback_data="admin_settings")],
         [InlineKeyboardButton(text="📊 Statistik", callback_data="admin_stats")],
         [InlineKeyboardButton(text="📝 10 Log Terakhir", callback_data="admin_logs")],
-        [InlineKeyboardButton(text="🔒 Logout Admin", callback_data="admin_logout")]
+    ]
+    if is_main_bot:
+        buttons.append([InlineKeyboardButton(text="👥 Kelola Clone", callback_data="manage_clones")])
+    buttons.append([InlineKeyboardButton(text="🔒 Logout Admin", callback_data="admin_logout")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+def clone_manage_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="➕ Buat Clone", callback_data="clone_create")],
+        [InlineKeyboardButton(text="📋 Daftar Clone", callback_data="clone_list")],
+        [InlineKeyboardButton(text="✏️ Perpanjang Clone", callback_data="clone_extend")],
+        [InlineKeyboardButton(text="❌ Suspend Clone", callback_data="clone_suspend")],
+        [InlineKeyboardButton(text="🗑 Hapus Clone", callback_data="clone_delete")],
+        [InlineKeyboardButton(text="🔙 Kembali", callback_data="admin_main")]
     ])
 
 def fs_settings_keyboard(fs_status: str) -> InlineKeyboardMarkup:

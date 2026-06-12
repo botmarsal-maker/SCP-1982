@@ -43,8 +43,11 @@ async def admin_panel(message: Message, state: FSMContext):
     user_id = message.from_user.id
     expired_at = await db.get_admin_session(user_id)
     
+    from globals import current_bot_id
+    is_main = current_bot_id.get("main") == "main"
+    
     if expired_at > time.time():
-        await message.answer("🛠 *Admin Panel*", reply_markup=inline.admin_keyboard(), parse_mode="Markdown")
+        await message.answer("🛠 *Admin Panel*", reply_markup=inline.admin_keyboard(is_main), parse_mode="Markdown")
     else:
         # Require PIN
         await state.set_state(AdminState.waiting_for_admin_pin)
@@ -52,7 +55,6 @@ async def admin_panel(message: Message, state: FSMContext):
 
 @router.message(AdminState.waiting_for_admin_pin)
 async def process_admin_pin(message: Message, state: FSMContext):
-    from config import OWNER_PIN
     import hmac
     
     # Try to delete the PIN message so it's not visible
@@ -61,24 +63,37 @@ async def process_admin_pin(message: Message, state: FSMContext):
     except:
         pass
         
-    if not OWNER_PIN:
+    admin_pin = await db.get_setting("admin_pin")
+    if not admin_pin:
+        from config import OWNER_PIN
+        admin_pin = OWNER_PIN
+
+    if not admin_pin:
         import logging
-        logging.error("OWNER_PIN is not configured in Environment Variables.")
+        logging.error("admin_pin is not configured.")
         await message.answer("❌ Terjadi kesalahan pada konfigurasi sistem. Silakan cek log bot.")
         await state.clear()
         return
 
+    if not message.text:
+        await message.answer("❌ Harap masukkan PIN dalam bentuk teks.")
+        return
+        
     # Secure string comparison using hmac
     # convert both to bytes before compare
     pin_bytes = message.text.encode('utf-8')
-    owner_pin_bytes = OWNER_PIN.encode('utf-8')
+    owner_pin_bytes = admin_pin.encode('utf-8')
     
     if len(pin_bytes) == len(owner_pin_bytes) and hmac.compare_digest(pin_bytes, owner_pin_bytes):
         # Create session
         await db.set_admin_session(message.from_user.id, 1200) # 20 minutes
         await state.clear()
+        
+        from globals import current_bot_id
+        is_main = current_bot_id.get("main") == "main"
+        
         await message.answer("✅ Login berhasil.\n\nSelamat datang Administrator.")
-        await message.answer("🛠 *Admin Panel*", reply_markup=inline.admin_keyboard(), parse_mode="Markdown")
+        await message.answer("🛠 *Admin Panel*", reply_markup=inline.admin_keyboard(is_main), parse_mode="Markdown")
     else:
         await message.answer("❌ PIN Administrator salah.\n\nSilakan coba kembali.")
 
@@ -94,9 +109,12 @@ async def back_to_admin(callback: CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
     expired_at = await db.get_admin_session(user_id)
     
+    from globals import current_bot_id
+    is_main = current_bot_id.get("main") == "main"
+    
     await state.clear()
     if expired_at > time.time():
-        await callback.message.edit_text("🛠 *Admin Panel*", reply_markup=inline.admin_keyboard(), parse_mode="Markdown")
+        await callback.message.edit_text("🛠 *Admin Panel*", reply_markup=inline.admin_keyboard(is_main), parse_mode="Markdown")
     else:
         await state.set_state(AdminState.waiting_for_admin_pin)
         await callback.message.edit_text("🔑 *SECURE SECURITY LOGIN*\n\nSilakan masukkan PIN Administrator Anda di bawah ini:\n\n_Sesi login valid selama 20 menit._", parse_mode="Markdown")
@@ -154,6 +172,10 @@ async def ask_add_fs(callback: CallbackQuery, state: FSMContext):
 
 @router.message(AdminState.waiting_for_add_fs)
 async def process_add_fs(message: Message, state: FSMContext):
+    if not message.text:
+        await message.answer("❌ Harap kirimkan pesan teks.")
+        return
+
     channel_id = message.text.strip()
     success = await db.add_fs_channel(channel_id)
     await state.clear()
@@ -208,6 +230,10 @@ async def ask_prefix(callback: CallbackQuery, state: FSMContext):
 
 @router.message(AdminState.waiting_for_prefix)
 async def set_prefix(message: Message, state: FSMContext):
+    if not message.text:
+        await message.answer("❌ Harap kirimkan pesan teks.")
+        return
+
     await db.set_setting("prefix", message.text)
     await state.clear()
     await message.answer("✅ Prefix berhasil diubah!", reply_markup=inline.InlineKeyboardMarkup(inline_keyboard=[[inline.InlineKeyboardButton(text="🔙 Kembali", callback_data="admin_main")]]))
@@ -219,6 +245,10 @@ async def ask_welcome(callback: CallbackQuery, state: FSMContext):
 
 @router.message(AdminState.waiting_for_welcome)
 async def set_welcome(message: Message, state: FSMContext):
+    if not message.text:
+        await message.answer("❌ Harap kirimkan pesan teks.")
+        return
+
     await db.set_setting("welcome_msg", message.text)
     await state.clear()
     await message.answer("✅ Pesan welcome berhasil diubah!", reply_markup=inline.InlineKeyboardMarkup(inline_keyboard=[[inline.InlineKeyboardButton(text="🔙 Kembali", callback_data="admin_main")]]))
@@ -230,6 +260,10 @@ async def ask_fs_msg(callback: CallbackQuery, state: FSMContext):
 
 @router.message(AdminState.waiting_for_fs_msg)
 async def set_fs_msg(message: Message, state: FSMContext):
+    if not message.text:
+        await message.answer("❌ Harap kirimkan pesan teks.")
+        return
+
     await db.set_setting("fs_msg", message.text)
     await state.clear()
     await message.answer("✅ Pesan Force Subscribe berhasil diubah!", reply_markup=inline.InlineKeyboardMarkup(inline_keyboard=[[inline.InlineKeyboardButton(text="🔙 Kembali", callback_data="admin_main")]]))
@@ -263,7 +297,9 @@ async def confirm_broadcast(callback: CallbackQuery, state: FSMContext):
         
     await callback.message.edit_text("🔄 Memulai broadcast...")
     # Mengirim broadcast ke background task agar tidak stall proses utama (Prioritas 1)
-    asyncio.create_task(start_broadcast(callback.bot, callback.from_user.id, msg_id, chat_id))
+    from globals import current_bot_id
+    bot_id = current_bot_id.get("main")
+    asyncio.create_task(start_broadcast(callback.bot, callback.from_user.id, msg_id, chat_id, bot_id))
 
 @router.callback_query(F.data == "delete_menfess")
 async def ask_delete_msg(callback: CallbackQuery, state: FSMContext):
@@ -272,10 +308,22 @@ async def ask_delete_msg(callback: CallbackQuery, state: FSMContext):
 
 @router.message(AdminState.waiting_for_delete_msg_id)
 async def do_delete_msg(message: Message, state: FSMContext):
+    if not message.text:
+        await message.answer("❌ Harap kirimkan pesan teks.")
+        return
+
     await state.clear()
     from config import CHANNEL_ID
     try:
         msg_id = int(message.text)
+        from globals import current_bot_id
+        if current_bot_id.get("main") != "main":
+            # Extra protection for clones: check if this clone actually posted it.
+            owner = await db.get_menfess_owner(msg_id)
+            if owner is None:
+                await message.answer("❌ Pesan ini tidak terdaftar di database bot ini.")
+                return
+                
         await message.bot.delete_message(chat_id=CHANNEL_ID, message_id=msg_id)
         await message.answer("✅ Pesan berhasil dihapus dari channel!", reply_markup=inline.InlineKeyboardMarkup(inline_keyboard=[[inline.InlineKeyboardButton(text="🔙 Kembali", callback_data="admin_main")]]))
     except ValueError:
@@ -310,6 +358,10 @@ async def ask_max_chars(callback: CallbackQuery, state: FSMContext):
 
 @router.message(AdminState.waiting_for_max_chars)
 async def do_set_max_chars(message: Message, state: FSMContext):
+    if not message.text:
+        await message.answer("❌ Harap kirimkan pesan teks.")
+        return
+
     if not message.text.isdigit():
         await message.answer("❌ Harap masukkan angka yang valid.")
         return
@@ -338,6 +390,10 @@ async def ask_add_badword(callback: CallbackQuery, state: FSMContext):
 
 @router.message(AdminState.waiting_for_add_badword)
 async def do_add_badword(message: Message, state: FSMContext):
+    if not message.text:
+        await message.answer("❌ Harap kirimkan pesan teks.")
+        return
+
     word = message.text.strip().lower()
     success = await db.add_badword(word)
     await state.clear()
@@ -353,6 +409,10 @@ async def ask_del_badword(callback: CallbackQuery, state: FSMContext):
 
 @router.message(AdminState.waiting_for_del_badword)
 async def do_del_badword(message: Message, state: FSMContext):
+    if not message.text:
+        await message.answer("❌ Harap kirimkan pesan teks.")
+        return
+
     word = message.text.strip().lower()
     await db.remove_badword(word)
     await state.clear()
@@ -417,6 +477,10 @@ async def ask_antispam_cooldown(callback: CallbackQuery, state: FSMContext):
 
 @router.message(AdminState.waiting_for_antispam_cooldown)
 async def do_set_antispam_cooldown(message: Message, state: FSMContext):
+    if not message.text:
+        await message.answer("❌ Harap kirimkan pesan teks.")
+        return
+
     if not message.text.isdigit():
         await message.answer("❌ Harap masukkan angka yang valid.")
         return
@@ -446,6 +510,10 @@ async def ask_dailylimit(callback: CallbackQuery, state: FSMContext):
 
 @router.message(AdminState.waiting_for_daily_limit)
 async def do_set_dailylimit(message: Message, state: FSMContext):
+    if not message.text:
+        await message.answer("❌ Harap kirimkan pesan teks.")
+        return
+
     if not message.text.isdigit():
         await message.answer("❌ Harap masukkan angka yang valid.")
         return
@@ -496,6 +564,10 @@ async def ask_fbot_username(callback: CallbackQuery, state: FSMContext):
 
 @router.message(AdminState.waiting_for_fbot_username)
 async def do_set_fbot_username(message: Message, state: FSMContext):
+    if not message.text:
+        await message.answer("❌ Harap kirimkan pesan teks.")
+        return
+
     await db.set_setting("force_bot_username", message.text)
     await state.clear()
     await message.answer("✅ Username bot berhasil diubah!", reply_markup=inline.InlineKeyboardMarkup(inline_keyboard=[[inline.InlineKeyboardButton(text="🔙 Kembali", callback_data="admin_fbot")]]))
@@ -507,6 +579,10 @@ async def ask_fbot_duration(callback: CallbackQuery, state: FSMContext):
 
 @router.message(AdminState.waiting_for_fbot_duration)
 async def do_set_fbot_duration(message: Message, state: FSMContext):
+    if not message.text:
+        await message.answer("❌ Harap kirimkan pesan teks.")
+        return
+
     if not message.text.isdigit():
         await message.answer("❌ Harap masukkan angka yang valid.")
         return

@@ -1,6 +1,7 @@
 from aiogram import Router, F
 from aiogram.types import Message, MessageOriginChannel
-from config import OWNER_ID, CHANNEL_ID
+from globals import get_bot_owner
+from config import CHANNEL_ID
 from database import db
 from keyboards import inline
 import logging
@@ -33,7 +34,8 @@ async def handle_comment(message: Message):
     if message.from_user.is_bot:
         return
         
-    if message.from_user.id == OWNER_ID:
+    owner = await get_bot_owner()
+    if message.from_user.id == owner:
         return
         
     if message.from_user.id == 777000: # Anonymous Telegram system

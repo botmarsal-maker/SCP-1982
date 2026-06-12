@@ -1,7 +1,8 @@
 from aiogram.filters import BaseFilter
 from aiogram.types import Message, CallbackQuery
-from config import OWNER_ID
+from globals import get_bot_owner
 
 class IsOwner(BaseFilter):
     async def __call__(self, obj: Message | CallbackQuery) -> bool:
-        return obj.from_user.id == OWNER_ID
+        owner = await get_bot_owner()
+        return obj.from_user.id == owner
