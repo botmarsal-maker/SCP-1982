@@ -429,20 +429,6 @@ async def toggle_antiusername(callback: CallbackQuery):
     await db.set_setting("anti_username_enabled", new_val)
     await rule_antiusername_menu(callback)
 
-@router.callback_query(F.data == "rule_media")
-async def rule_media_menu(callback: CallbackQuery):
-    enabled = await db.get_setting("anti_media_enabled")
-    status = "Aktif" if enabled == "1" else "Nonaktif"
-    text = f"🖼️ *Filter Media*\n\nLarangan Pengiriman Media: `{status}`"
-    await callback.message.edit_text(text, reply_markup=inline.rule_media_keyboard(enabled), parse_mode="Markdown")
-
-@router.callback_query(F.data == "toggle_media")
-async def toggle_media(callback: CallbackQuery):
-    enabled = await db.get_setting("anti_media_enabled")
-    new_val = "0" if enabled == "1" else "1"
-    await db.set_setting("anti_media_enabled", new_val)
-    await rule_media_menu(callback)
-
 @router.callback_query(F.data == "rule_antispam")
 async def rule_antispam_menu(callback: CallbackQuery):
     enabled = await db.get_setting("anti_spam_enabled")

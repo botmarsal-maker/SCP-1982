@@ -283,14 +283,7 @@ async def process_menfess(message: Message):
             await message.answer("❌ *Pesan Ditolak!*\n\nPesan kamu mengandung mention/username yang dilarang.", parse_mode="Markdown")
             return
             
-    # 6. Larangan Media
-    anti_media_enabled = await db.get_setting("anti_media_enabled")
-    if anti_media_enabled == "1":
-        if message.photo or message.video or message.document or message.audio or message.voice or message.animation or message.sticker:
-            await message.answer("❌ *Pesan Ditolak!*\n\nPengiriman media saat ini dilarang, silakan kirim pesan teks saja.", parse_mode="Markdown")
-            return
-            
-    # 7. Limit Pesan Harian
+    # 6. Limit Pesan Harian
     import datetime
     from config import OWNER_IDS
     today_str = datetime.datetime.now().strftime('%Y-%m-%d')
