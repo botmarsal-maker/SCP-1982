@@ -14,7 +14,14 @@ async def poll_clone(bot: Bot, dispatcher, bot_id: str):
             updates = await bot.get_updates(offset=offset, timeout=30, allowed_updates=dispatcher.resolve_used_update_types())
             for update in updates:
                 offset = update.update_id + 1
-                asyncio.create_task(dispatcher.feed_update(bot, update))
+                async def _handle_update(u):
+                    try:
+                        logging.info(f"[CLONE] {bot_id} feeding update: {u.update_id}")
+                        await dispatcher.feed_update(bot, u)
+                        logging.info(f"[CLONE] {bot_id} successfully fed update: {u.update_id}")
+                    except Exception as e:
+                        logging.error(f"[CLONE] {bot_id} error feeding update: {e}", exc_info=True)
+                asyncio.create_task(_handle_update(update))
         except asyncio.CancelledError:
             logging.info(f"[CLONE] polling_stopped=True for {bot_id}")
             await bot.session.close()
@@ -61,5 +68,13 @@ async def stop_clone(bot_id: str):
         del clone_tasks[bot_id]
         logging.info(f"Stopped clone {bot_id}")
 
-def get_running_clones():
-    return list(clone_tasks.keys())
+async def load_clones(dispatcher):
+    from database.clone_db import clone_db
+    clones = await clone_db.get_clones()
+    logging.info(f"[CLONE] loaded={len(clones)}")
+    count = 0
+    for clone in clones:
+        if clone['status'] == 'active':
+            await start_clone(clone['bot_token'], clone['bot_id'], dispatcher)
+            count += 1
+    return count

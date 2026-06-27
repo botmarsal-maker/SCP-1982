@@ -22,6 +22,8 @@ class BotContextMiddleware(BaseMiddleware):
             clone_info = await clone_db.get_clone(bot_id)
             if clone_info:
                 if clone_info['status'] == 'suspended':
+                    import logging
+                    logging.info(f"[CLONE] bot {bot_id} is suspended")
                     if hasattr(event, "message") and event.message:
                         await event.message.answer("❌ Bot ini sedang dinonaktifkan (Suspended).\n\nSilakan hubungi penyedia layanan.")
                     elif hasattr(event, "callback_query") and event.callback_query:
@@ -30,6 +32,8 @@ class BotContextMiddleware(BaseMiddleware):
                     return
                 elif clone_info['expired_at'] < time.time():
                     # EXPIRED!
+                    import logging
+                    logging.info(f"[CLONE] bot {bot_id} is expired")
                     if hasattr(event, "message") and event.message:
                         await event.message.answer("❌ Masa aktif bot telah berakhir.\n\nSilakan hubungi penyedia layanan.")
                     elif hasattr(event, "callback_query") and event.callback_query:
@@ -37,6 +41,8 @@ class BotContextMiddleware(BaseMiddleware):
                     current_bot_id.reset(token)
                     return # Stop execution
             else:
+                import logging
+                logging.warning(f"[CLONE] Ghost bot {bot_id} running? Not found in clone_db.")
                 # Ghost bot running? Maybe it was deleted.
                 current_bot_id.reset(token)
                 return 

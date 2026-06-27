@@ -61,11 +61,7 @@ async def main():
     await bot.delete_webhook(drop_pending_updates=True)
     
     # Run active clones
-    clones = await clone_db.get_clones()
-    logging.info(f"[CLONE] loaded={len(clones)}")
-    for clone in clones:
-        if clone['status'] == 'active':
-            await clone_manager.start_clone(clone['bot_token'], clone['bot_id'], dp)
+    await clone_manager.load_clones(dp)
             
     await dp.start_polling(bot)
 

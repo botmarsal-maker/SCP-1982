@@ -289,30 +289,35 @@ async def process_menfess(message: Message):
     try:
         sent_msg = None
         target_channel = await get_target_channel()
-        if message.text:
-            text = message.text
-            # Telegram text limit is 4096
-            if len(text) > 4096:
-                text = text[:4093] + "..."
-            sent_msg = await message.bot.send_message(chat_id=target_channel, text=text)
-            content = message.text
-        elif message.photo:
-            caption = prep_caption(message.caption)
-            sent_msg = await message.bot.send_photo(chat_id=target_channel, photo=message.photo[-1].file_id, caption=caption)
-            content = message.caption or "Photo"
-            msg_type = "photo"
-        elif message.video:
-            caption = prep_caption(message.caption)
-            sent_msg = await message.bot.send_video(chat_id=target_channel, video=message.video.file_id, caption=caption)
-            content = message.caption or "Video"
-            msg_type = "video"
-        elif message.document:
-            caption = prep_caption(message.caption)
-            sent_msg = await message.bot.send_document(chat_id=target_channel, document=message.document.file_id, caption=caption)
-            content = message.caption or "Document"
-            msg_type = "document"
-        else:
-            await message.answer("Tipe pesan ini belum didukung.")
+        try:
+            if message.text:
+                text = message.text
+                # Telegram text limit is 4096
+                if len(text) > 4096:
+                    text = text[:4093] + "..."
+                sent_msg = await message.bot.send_message(chat_id=target_channel, text=text)
+                content = message.text
+            elif message.photo:
+                caption = prep_caption(message.caption)
+                sent_msg = await message.bot.send_photo(chat_id=target_channel, photo=message.photo[-1].file_id, caption=caption)
+                content = message.caption or "Photo"
+                msg_type = "photo"
+            elif message.video:
+                caption = prep_caption(message.caption)
+                sent_msg = await message.bot.send_video(chat_id=target_channel, video=message.video.file_id, caption=caption)
+                content = message.caption or "Video"
+                msg_type = "video"
+            elif message.document:
+                caption = prep_caption(message.caption)
+                sent_msg = await message.bot.send_document(chat_id=target_channel, document=message.document.file_id, caption=caption)
+                content = message.caption or "Document"
+                msg_type = "document"
+            else:
+                await message.answer("Tipe pesan ini belum didukung.")
+                return
+        except Exception as e:
+            logging.error(f"Gagal mengirim menfess ke channel {target_channel}: {e}")
+            await message.answer("❌ Gagal mengirim menfess. Pastikan bot telah dimasukkan ke channel dan dijadikan admin, serta Target Channel sudah disetting di menu admin.")
             return
             
         if sent_msg:
