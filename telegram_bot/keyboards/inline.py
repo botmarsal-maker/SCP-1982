@@ -93,6 +93,7 @@ def rules_menu_keyboard() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="👤 Larangan Username", callback_data="rule_antiusername")],
         [InlineKeyboardButton(text="🚨 Anti Spam", callback_data="rule_antispam")],
         [InlineKeyboardButton(text="📨 Limit Pesan Harian", callback_data="rule_dailylimit")],
+        [InlineKeyboardButton(text="🖼️ Filter Media", callback_data="rule_media")],
         [InlineKeyboardButton(text="🔙 Kembali", callback_data="admin_main")]
     ])
 
@@ -124,6 +125,13 @@ def rule_antiusername_keyboard(enabled: str) -> InlineKeyboardMarkup:
     status = "✅ Aktif" if enabled == "1" else "❌ Nonaktif"
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=status, callback_data="toggle_antiusername")],
+        [InlineKeyboardButton(text="🔙 Kembali", callback_data="admin_rules")]
+    ])
+
+def rule_media_keyboard(enabled: str) -> InlineKeyboardMarkup:
+    status = "✅ Aktif" if enabled == "1" else "❌ Nonaktif"
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=status, callback_data="toggle_media")],
         [InlineKeyboardButton(text="🔙 Kembali", callback_data="admin_rules")]
     ])
 
