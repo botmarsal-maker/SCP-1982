@@ -3,7 +3,7 @@ from aiogram.types import Message, CallbackQuery, TelegramObject
 from aiogram.fsm.context import FSMContext
 from typing import Callable, Dict, Any, Awaitable
 from database import db
-from config import OWNER_ID
+from config import OWNER_IDS
 import time
 
 class AdminSessionMiddleware(BaseMiddleware):
@@ -22,8 +22,8 @@ class AdminSessionMiddleware(BaseMiddleware):
                 
         user_id = event.from_user.id
         
-        # Only process for OWNER_ID (though IsOwner also filters it)
-        if user_id != OWNER_ID:
+        # Only process for OWNER_IDS (though IsOwner also filters it)
+        if user_id not in OWNER_IDS:
             return await handler(event, data)
             
         expired_at = await db.get_admin_session(user_id)

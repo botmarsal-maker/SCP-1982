@@ -3,7 +3,7 @@ from aiogram.types import Message, CallbackQuery, ChatMemberUpdated
 from aiogram.filters import CommandStart
 from aiogram.enums import ChatMemberStatus
 
-from config import OWNER_ID, CHANNEL_ID
+from config import OWNER_IDS, CHANNEL_ID
 from database import db
 from keyboards import inline
 from database.cache import fs_cache
@@ -92,7 +92,7 @@ async def cmd_start(message: Message):
     await db.add_user(user_id, username)
     
     maintenance = await db.get_setting("maintenance")
-    if maintenance == "1" and user_id != OWNER_ID:
+    if maintenance == "1" and user_id not in OWNER_IDS:
         await message.answer("🚧 Bot sedang dalam masa perbaikan (maintenance). Silakan coba lagi nanti.")
         return
 
@@ -215,7 +215,7 @@ async def process_menfess(message: Message):
         return # Ignore other commands
         
     maintenance = await db.get_setting("maintenance")
-    if maintenance == "1" and user_id != OWNER_ID:
+    if maintenance == "1" and user_id not in OWNER_IDS:
         await message.answer("🚧 Bot sedang dalam masa perbaikan (maintenance).")
         return
 
@@ -285,9 +285,9 @@ async def process_menfess(message: Message):
             
     # 6. Limit Pesan Harian
     import datetime
-    from config import OWNER_ID
+    from config import OWNER_IDS
     today_str = datetime.datetime.now().strftime('%Y-%m-%d')
-    if user_id != OWNER_ID:
+    if user_id not in OWNER_IDS:
         daily_limit_enabled = await db.get_setting("daily_limit_enabled")
         if daily_limit_enabled == "1":
             limit = int(await db.get_setting("daily_limit_count") or "5")

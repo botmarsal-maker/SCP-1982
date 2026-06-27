@@ -32,8 +32,8 @@ class ForceSubscribeMiddleware(BaseMiddleware):
         await db.add_user(user_id, username)
         
         # If admin, just let it pass
-        from config import OWNER_ID
-        if user_id == OWNER_ID:
+        from config import OWNER_IDS
+        if user_id in OWNER_IDS:
             return await handler(event, data)
             
         # Ignore checks if it's the check_fs callback itself

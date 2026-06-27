@@ -2,7 +2,7 @@ from aiogram import BaseMiddleware
 from aiogram.types import Message, CallbackQuery, TelegramObject, InlineKeyboardMarkup, InlineKeyboardButton
 from typing import Callable, Dict, Any, Awaitable
 from database import db
-from config import OWNER_ID
+from config import OWNER_IDS
 import time
 import datetime
 
@@ -24,7 +24,7 @@ class ForceBotMiddleware(BaseMiddleware):
         user_id = user.id
         
         # Admin bypass
-        if user_id == OWNER_ID:
+        if user_id in OWNER_IDS:
             return await handler(event, data)
             
         # Ignore checks if it's the verify_bot callback itself or check_fs

@@ -8,15 +8,25 @@ def fs_keyboard(channel_link: str) -> InlineKeyboardMarkup:
 
 def admin_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📢 Broadcast", callback_data="admin_broadcast")],
-        [InlineKeyboardButton(text="🚀 Ubah Prefix", callback_data="admin_prefix")],
-        [InlineKeyboardButton(text="🔒 Force Sub", callback_data="admin_fs")],
-        [InlineKeyboardButton(text="🤖 Force Bot", callback_data="admin_fbot")],
-        [InlineKeyboardButton(text="📜 Kelola Aturan", callback_data="admin_rules")],
-        [InlineKeyboardButton(text="⚙️ Pengaturan", callback_data="admin_settings")],
-        [InlineKeyboardButton(text="📊 Statistik", callback_data="admin_stats")],
-        [InlineKeyboardButton(text="📝 10 Log Terakhir", callback_data="admin_logs")],
-        [InlineKeyboardButton(text="🔒 Logout Admin", callback_data="admin_logout")]
+        [
+            InlineKeyboardButton(text="📢 Broadcast", callback_data="admin_broadcast"),
+            InlineKeyboardButton(text="📊 Statistik", callback_data="admin_stats")
+        ],
+        [
+            InlineKeyboardButton(text="⚙️ Pengaturan", callback_data="admin_settings"),
+            InlineKeyboardButton(text="📝 Log Terakhir", callback_data="admin_logs")
+        ],
+        [
+            InlineKeyboardButton(text="🚀 Prefix", callback_data="admin_prefix"),
+            InlineKeyboardButton(text="📜 Kelola Aturan", callback_data="admin_rules")
+        ],
+        [
+            InlineKeyboardButton(text="🔒 Force Sub", callback_data="admin_fs"),
+            InlineKeyboardButton(text="🤖 Force Bot", callback_data="admin_fbot")
+        ],
+        [
+            InlineKeyboardButton(text="🚪 Logout Admin", callback_data="admin_logout")
+        ]
     ])
 
 def fs_settings_keyboard(fs_status: str) -> InlineKeyboardMarkup:

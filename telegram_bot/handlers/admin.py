@@ -5,12 +5,43 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 
-from config import OWNER_ID, CHANNEL_ID
+from config import OWNER_IDS, CHANNEL_ID, START_TIME, VERSION
 from database import db
 from keyboards import inline
 from filters.is_owner import IsOwner
 from middlewares.admin_session import AdminSessionMiddleware
 from services.broadcast import start_broadcast
+import time
+from datetime import datetime, timedelta
+
+async def get_admin_panel_text(user_full_name: str) -> str:
+    # Get stats
+    users_count, _ = await db.get_stats()
+    
+    # Get today's stats
+    today_str = datetime.now().strftime('%Y-%m-%d')
+    daily_stats = await db.get_daily_stats(today_str)
+    today_posts = 0
+    if daily_stats:
+        today_posts = daily_stats[0].get("total_messages", 0)
+        
+    # Calculate uptime
+    uptime_seconds = int(time.time() - START_TIME)
+    uptime_delta = timedelta(seconds=uptime_seconds)
+    uptime_str = str(uptime_delta).split(".")[0]  # Remove microseconds
+    
+    text = (
+        "🛠️ <b>Admin Panel</b>\n\n"
+        f"Selamat datang, <b>{user_full_name}</b>.\n\n"
+        "📊 <b>Status Sistem</b>\n"
+        "• 🟢 Status Bot : Online\n"
+        f"• 👥 Total User : {users_count}\n"
+        f"• 📨 Menfess Hari Ini : {today_posts}\n"
+        f"• ⏱ Uptime : {uptime_str}\n"
+        f"• 💾 Versi : {VERSION}\n\n"
+        "Pilih menu yang ingin dikelola."
+    )
+    return text
 
 router = Router()
 # Menerapkan IsOwner filter pada skala router (Prioritas 8)
@@ -44,7 +75,8 @@ async def admin_panel(message: Message, state: FSMContext):
     expired_at = await db.get_admin_session(user_id)
     
     if expired_at > time.time():
-        await message.answer("🛠 *Admin Panel*", reply_markup=inline.admin_keyboard(), parse_mode="Markdown")
+        text = await get_admin_panel_text(message.from_user.full_name)
+        await message.answer(text, reply_markup=inline.admin_keyboard(), parse_mode="HTML")
     else:
         # Require PIN
         await state.set_state(AdminState.waiting_for_admin_pin)
@@ -78,7 +110,8 @@ async def process_admin_pin(message: Message, state: FSMContext):
         await db.set_admin_session(message.from_user.id, 1200) # 20 minutes
         await state.clear()
         await message.answer("✅ Login berhasil.\n\nSelamat datang Administrator.")
-        await message.answer("🛠 *Admin Panel*", reply_markup=inline.admin_keyboard(), parse_mode="Markdown")
+        text = await get_admin_panel_text(message.from_user.full_name)
+        await message.answer(text, reply_markup=inline.admin_keyboard(), parse_mode="HTML")
     else:
         await message.answer("❌ PIN Administrator salah.\n\nSilakan coba kembali.")
 
@@ -96,7 +129,8 @@ async def back_to_admin(callback: CallbackQuery, state: FSMContext):
     
     await state.clear()
     if expired_at > time.time():
-        await callback.message.edit_text("🛠 *Admin Panel*", reply_markup=inline.admin_keyboard(), parse_mode="Markdown")
+        text = await get_admin_panel_text(callback.from_user.full_name)
+        await callback.message.edit_text(text, reply_markup=inline.admin_keyboard(), parse_mode="HTML")
     else:
         await state.set_state(AdminState.waiting_for_admin_pin)
         await callback.message.edit_text("🔑 *SECURE SECURITY LOGIN*\n\nSilakan masukkan PIN Administrator Anda di bawah ini:\n\n_Sesi login valid selama 20 menit._", parse_mode="Markdown")
