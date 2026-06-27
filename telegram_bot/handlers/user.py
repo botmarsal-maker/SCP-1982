@@ -3,8 +3,7 @@ from aiogram.types import Message, CallbackQuery, ChatMemberUpdated
 from aiogram.filters import CommandStart
 from aiogram.enums import ChatMemberStatus
 
-from config import CHANNEL_ID
-from globals import get_bot_owner
+from config import OWNER_ID, CHANNEL_ID
 from database import db
 from keyboards import inline
 from database.cache import fs_cache
@@ -14,9 +13,10 @@ router = Router()
 import logging
 import re
 import time
-from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
+from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, TelegramRetryAfter
 
 user_last_message = {}
+last_spam_cleanup = time.time()
 
 async def check_force_sub(user_id: int, bot, use_cache: bool = True) -> bool:
     fs_status = await db.get_setting("force_sub")
@@ -91,9 +91,8 @@ async def cmd_start(message: Message):
     username = message.from_user.username or str(user_id)
     await db.add_user(user_id, username)
     
-    owner = await get_bot_owner()
     maintenance = await db.get_setting("maintenance")
-    if maintenance == "1" and user_id != owner:
+    if maintenance == "1" and user_id != OWNER_ID:
         await message.answer("🚧 Bot sedang dalam masa perbaikan (maintenance). Silakan coba lagi nanti.")
         return
 
@@ -144,7 +143,18 @@ async def verify_fs(callback: CallbackQuery):
         display_name = clean_chat_id if not clean_chat_id.startswith("-100") else f"Channel {idx}"
         status_text += f"📢 {display_name} {icon}\n"
         
-        link = channel if channel.startswith("http") else f"https://t.me/{channel.replace('@', '')}"
+        link = channel
+        if channel.startswith("http"):
+            pass
+        elif not channel.lstrip("-").isdigit():
+            link = f"https://t.me/{channel.replace('@', '')}"
+        else:
+            try:
+                chat_info = await callback.bot.get_chat(channel.strip())
+                link = chat_info.invite_link or (await callback.bot.create_chat_invite_link(channel.strip())).invite_link
+            except Exception:
+                link = "https://t.me"
+                
         buttons.append([inline.InlineKeyboardButton(text=f"📢 Gabung Channel {idx}", url=link)])
 
     if all_subbed:
@@ -169,12 +179,23 @@ async def verify_fs(callback: CallbackQuery):
 @router.callback_query(F.data == "verify_bot")
 async def handle_verify_bot(callback: CallbackQuery):
     user_id = callback.from_user.id
-    await db.set_bot_verification(user_id)
+    verified_at = await db.get_bot_verification(user_id)
+    
+    fbot_duration_str = await db.get_setting("force_bot_duration")
     try:
-        await callback.message.delete()
+        fbot_duration = int(fbot_duration_str)
     except:
-        pass
-    await callback.message.answer("✅ Verifikasi berhasil. Silakan gunakan bot kembali.")
+        fbot_duration = 24
+        
+    duration_seconds = fbot_duration * 3600
+    if verified_at > 0 and (time.time() - verified_at) < duration_seconds:
+        try:
+            await callback.message.delete()
+        except:
+            pass
+        await callback.message.answer("✅ Verifikasi berhasil. Silakan gunakan bot kembali.")
+    else:
+        await callback.answer("❌ Anda belum terverifikasi di sistem kami. Silakan klik tombol Buka Bot Partner dan kirim /start di sana.", show_alert=True)
 
 def get_message_url(chat_id: str | int, message_id: int) -> str:
     chat_id_str = str(chat_id)
@@ -185,11 +206,6 @@ def get_message_url(chat_id: str | int, message_id: int) -> str:
     else:
         return f"https://t.me/c/{chat_id_str.strip('-')}/{message_id}"
 
-async def get_target_channel():
-    from config import CHANNEL_ID
-    target = await db.get_setting("target_channel")
-    return target if target else CHANNEL_ID
-    
 @router.message(F.chat.type == "private")
 async def process_menfess(message: Message):
     user_id = message.from_user.id
@@ -198,9 +214,8 @@ async def process_menfess(message: Message):
     if message.text and message.text.startswith('/'):
         return # Ignore other commands
         
-    owner = await get_bot_owner()
     maintenance = await db.get_setting("maintenance")
-    if maintenance == "1" and user_id != owner:
+    if maintenance == "1" and user_id != OWNER_ID:
         await message.answer("🚧 Bot sedang dalam masa perbaikan (maintenance).")
         return
 
@@ -217,22 +232,25 @@ async def process_menfess(message: Message):
     # --- VALIDASI ATURAN ---
     
     # 1. Anti Spam
+    global last_spam_cleanup
     anti_spam_enabled = await db.get_setting("anti_spam_enabled")
     if anti_spam_enabled == "1":
         cooldown = int(await db.get_setting("anti_spam_cooldown") or "10")
         current_time = time.time()
         
-        from globals import current_bot_id
-        bot_id = current_bot_id.get("main")
-        if bot_id not in user_last_message:
-            user_last_message[bot_id] = {}
-            
-        last_time = user_last_message[bot_id].get(user_id, 0)
+        # Cleanup old entries to prevent memory leak
+        if current_time - last_spam_cleanup > 3600:
+            last_spam_cleanup = current_time
+            to_delete = [uid for uid, t in user_last_message.items() if current_time - t > 3600]
+            for uid in to_delete:
+                del user_last_message[uid]
+
+        last_time = user_last_message.get(user_id, 0)
         if current_time - last_time < cooldown:
             wait_time = int(cooldown - (current_time - last_time))
             await message.answer(f"❌ *Pesan Ditolak!*\n\nHarap tunggu {wait_time} detik sebelum mengirim pesan lagi.", parse_mode="Markdown")
             return
-        user_last_message[bot_id][user_id] = current_time
+        user_last_message[user_id] = current_time
         
     # 2. Maksimal Karakter
     max_chars_enabled = await db.get_setting("max_chars_enabled")
@@ -267,8 +285,9 @@ async def process_menfess(message: Message):
             
     # 6. Limit Pesan Harian
     import datetime
+    from config import OWNER_ID
     today_str = datetime.datetime.now().strftime('%Y-%m-%d')
-    if user_id != owner:
+    if user_id != OWNER_ID:
         daily_limit_enabled = await db.get_setting("daily_limit_enabled")
         if daily_limit_enabled == "1":
             limit = int(await db.get_setting("daily_limit_count") or "5")
@@ -288,48 +307,68 @@ async def process_menfess(message: Message):
     
     try:
         sent_msg = None
-        target_channel = await get_target_channel()
-        try:
-            if message.text:
-                text = message.text
-                # Telegram text limit is 4096
-                if len(text) > 4096:
-                    text = text[:4093] + "..."
-                sent_msg = await message.bot.send_message(chat_id=target_channel, text=text)
-                content = message.text
-            elif message.photo:
-                caption = prep_caption(message.caption)
-                sent_msg = await message.bot.send_photo(chat_id=target_channel, photo=message.photo[-1].file_id, caption=caption)
-                content = message.caption or "Photo"
-                msg_type = "photo"
-            elif message.video:
-                caption = prep_caption(message.caption)
-                sent_msg = await message.bot.send_video(chat_id=target_channel, video=message.video.file_id, caption=caption)
-                content = message.caption or "Video"
-                msg_type = "video"
-            elif message.document:
-                caption = prep_caption(message.caption)
-                sent_msg = await message.bot.send_document(chat_id=target_channel, document=message.document.file_id, caption=caption)
-                content = message.caption or "Document"
-                msg_type = "document"
-            else:
-                await message.answer("Tipe pesan ini belum didukung.")
-                return
-        except Exception as e:
-            logging.error(f"Gagal mengirim menfess ke channel {target_channel}: {e}")
-            await message.answer("❌ Gagal mengirim menfess. Pastikan bot telah dimasukkan ke channel dan dijadikan admin, serta Target Channel sudah disetting di menu admin.")
+        if message.text:
+            text = message.text
+            # Telegram text limit is 4096
+            if len(text) > 4096:
+                text = text[:4093] + "..."
+            sent_msg = await message.bot.send_message(chat_id=CHANNEL_ID, text=text)
+            content = message.text
+        elif message.photo:
+            caption = prep_caption(message.caption)
+            sent_msg = await message.bot.send_photo(chat_id=CHANNEL_ID, photo=message.photo[-1].file_id, caption=caption)
+            content = message.caption or "Photo"
+            msg_type = "photo"
+        elif message.video:
+            caption = prep_caption(message.caption)
+            sent_msg = await message.bot.send_video(chat_id=CHANNEL_ID, video=message.video.file_id, caption=caption)
+            content = message.caption or "Video"
+            msg_type = "video"
+        elif message.document:
+            caption = prep_caption(message.caption)
+            sent_msg = await message.bot.send_document(chat_id=CHANNEL_ID, document=message.document.file_id, caption=caption)
+            content = message.caption or "Document"
+            msg_type = "document"
+        else:
+            await message.answer("Tipe pesan ini belum didukung.")
             return
             
         if sent_msg:
             await db.log_message(user_id, username, msg_type, content, sent_msg.message_id)
             await db.add_menfess_post(user_id, sent_msg.message_id)
             await db.increment_daily_usage(user_id, today_str)
-            post_url = get_message_url(target_channel, sent_msg.message_id)
+            post_url = get_message_url(CHANNEL_ID, sent_msg.message_id)
             await message.answer(
                 "✅ Pesan berhasil dikirim! 🚀\n\nGunakan tombol di bawah untuk melihat postingan Anda.",
                 reply_markup=inline.see_post_keyboard(post_url)
             )
             
+    except TelegramRetryAfter as e:
+        await asyncio.sleep(e.retry_after)
+        try:
+            if message.text:
+                sent_msg = await message.bot.send_message(chat_id=CHANNEL_ID, text=message.text[:4093] + "..." if len(message.text) > 4096 else message.text)
+            elif message.photo:
+                sent_msg = await message.bot.send_photo(chat_id=CHANNEL_ID, photo=message.photo[-1].file_id, caption=prep_caption(message.caption))
+            elif message.video:
+                sent_msg = await message.bot.send_video(chat_id=CHANNEL_ID, video=message.video.file_id, caption=prep_caption(message.caption))
+            elif message.document:
+                sent_msg = await message.bot.send_document(chat_id=CHANNEL_ID, document=message.document.file_id, caption=prep_caption(message.caption))
+            else:
+                sent_msg = None
+                
+            if sent_msg:
+                await db.log_message(user_id, username, msg_type, content, sent_msg.message_id)
+                await db.add_menfess_post(user_id, sent_msg.message_id)
+                await db.increment_daily_usage(user_id, today_str)
+                post_url = get_message_url(CHANNEL_ID, sent_msg.message_id)
+                await message.answer(
+                    "✅ Pesan berhasil dikirim setelah menunggu delay! 🚀\n\nGunakan tombol di bawah untuk melihat postingan Anda.",
+                    reply_markup=inline.see_post_keyboard(post_url)
+                )
+        except Exception as e2:
+            await message.answer("❌ Gagal mengirim pesan ke channel meskipun telah dicoba ulang.")
+            print(f"Error retry send menfess: {e2}")
     except Exception as e:
         await message.answer("❌ Gagal mengirim pesan ke channel. Pastikan bot adalah admin di channel tersebut.")
         print(f"Error send menfess: {e}")

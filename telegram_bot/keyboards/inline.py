@@ -6,8 +6,8 @@ def fs_keyboard(channel_link: str) -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="✅ Cek Keanggotaan", callback_data="check_fs")]
     ])
 
-def admin_keyboard(is_main_bot: bool = False) -> InlineKeyboardMarkup:
-    buttons = [
+def admin_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📢 Broadcast", callback_data="admin_broadcast")],
         [InlineKeyboardButton(text="🚀 Ubah Prefix", callback_data="admin_prefix")],
         [InlineKeyboardButton(text="🔒 Force Sub", callback_data="admin_fs")],
@@ -16,20 +16,7 @@ def admin_keyboard(is_main_bot: bool = False) -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="⚙️ Pengaturan", callback_data="admin_settings")],
         [InlineKeyboardButton(text="📊 Statistik", callback_data="admin_stats")],
         [InlineKeyboardButton(text="📝 10 Log Terakhir", callback_data="admin_logs")],
-    ]
-    if is_main_bot:
-        buttons.append([InlineKeyboardButton(text="👥 Kelola Clone", callback_data="manage_clones")])
-    buttons.append([InlineKeyboardButton(text="🔒 Logout Admin", callback_data="admin_logout")])
-    return InlineKeyboardMarkup(inline_keyboard=buttons)
-
-def clone_manage_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="➕ Buat Clone", callback_data="clone_create")],
-        [InlineKeyboardButton(text="📋 Daftar Clone", callback_data="clone_list")],
-        [InlineKeyboardButton(text="✏️ Perpanjang Clone", callback_data="clone_extend")],
-        [InlineKeyboardButton(text="❌ Suspend Clone", callback_data="clone_suspend")],
-        [InlineKeyboardButton(text="🗑 Hapus Clone", callback_data="clone_delete")],
-        [InlineKeyboardButton(text="🔙 Kembali", callback_data="admin_main")]
+        [InlineKeyboardButton(text="🔒 Logout Admin", callback_data="admin_logout")]
     ])
 
 def fs_settings_keyboard(fs_status: str) -> InlineKeyboardMarkup:
@@ -60,7 +47,6 @@ def general_settings_keyboard(maintenance: str) -> InlineKeyboardMarkup:
     mt_text = "🟢 Aktif" if maintenance == "1" else "🔴 Nonaktif"
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=f"Maintenance: {mt_text}", callback_data="toggle_mt")],
-        [InlineKeyboardButton(text="Ubah Target Channel", callback_data="set_target_channel")],
         [InlineKeyboardButton(text="Ubah Welcome Msg", callback_data="set_welcome")],
         [InlineKeyboardButton(text="Ubah Pesan FS", callback_data="set_fs_msg")],
         [InlineKeyboardButton(text="🗑 Hapus Menfess", callback_data="delete_menfess")],

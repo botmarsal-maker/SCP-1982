@@ -32,9 +32,8 @@ class ForceSubscribeMiddleware(BaseMiddleware):
         await db.add_user(user_id, username)
         
         # If admin, just let it pass
-        from globals import get_bot_owner
-        owner = await get_bot_owner()
-        if user_id == owner:
+        from config import OWNER_ID
+        if user_id == OWNER_ID:
             return await handler(event, data)
             
         # Ignore checks if it's the check_fs callback itself
@@ -91,7 +90,18 @@ class ForceSubscribeMiddleware(BaseMiddleware):
             display_name = clean_chat_id if not clean_chat_id.startswith("-100") else f"Channel {idx}"
             status_text += f"📢 {display_name} {icon}\n"
             
-            link = channel if channel.startswith("http") else f"https://t.me/{channel.replace('@', '')}"
+            link = channel
+            if channel.startswith("http"):
+                pass
+            elif not channel.lstrip("-").isdigit():
+                link = f"https://t.me/{channel.replace('@', '')}"
+            else:
+                try:
+                    chat_info = await bot.get_chat(channel.strip())
+                    link = chat_info.invite_link or (await bot.create_chat_invite_link(channel.strip())).invite_link
+                except Exception:
+                    link = "https://t.me"
+                    
             buttons.append([InlineKeyboardButton(text=f"📢 Gabung Channel {idx}", url=link)])
 
         if all_subbed:

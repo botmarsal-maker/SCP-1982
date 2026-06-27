@@ -9,6 +9,16 @@ class ThrottlingMiddleware(BaseMiddleware):
         self.cb_rate_limit = cb_rate_limit
         self.users = {}
         self.cb_users = {}
+        self.last_cleanup = time.time()
+
+    async def _cleanup_old_records(self):
+        now = time.time()
+        if now - self.last_cleanup > 3600:  # Clean every hour
+            self.last_cleanup = now
+            for d in (self.users, self.cb_users):
+                to_delete = [uid for uid, last_time in d.items() if now - last_time > 3600]
+                for uid in to_delete:
+                    del d[uid]
 
     async def __call__(
         self,
@@ -16,6 +26,7 @@ class ThrottlingMiddleware(BaseMiddleware):
         event: Any,
         data: Dict[str, Any]
     ) -> Any:
+        await self._cleanup_old_records()
         
         user_id = event.from_user.id
         now = time.time()
