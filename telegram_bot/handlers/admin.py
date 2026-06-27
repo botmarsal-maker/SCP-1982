@@ -20,10 +20,10 @@ async def get_admin_panel_text(user_full_name: str) -> str:
     
     # Get today's stats
     today_str = datetime.now().strftime('%Y-%m-%d')
-    daily_stats = await db.get_daily_stats(today_str)
-    today_posts = 0
-    if daily_stats:
-        today_posts = daily_stats[0].get("total_messages", 0)
+    try:
+        _, today_posts, _ = await db.get_daily_stats(today_str)
+    except:
+        today_posts = 0
         
     # Calculate uptime
     uptime_seconds = int(time.time() - START_TIME)
