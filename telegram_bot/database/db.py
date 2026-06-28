@@ -32,6 +32,8 @@ async def init_db():
         'welcome_msg': 'Halo! Kirim pesanmu kesini dan akan otomatis diteruskan ke channel.',
         'fs_msg': '❌ Anda harus bergabung ke channel terlebih dahulu untuk menggunakan bot ini.',
         'maintenance': '0',
+        'maintenance_reason': '',
+        'maintenance_end_time': '',
         # Pengaturan Aturan Baru
         'max_chars_enabled': '0',
         'max_chars_limit': '250',

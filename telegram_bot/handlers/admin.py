@@ -67,6 +67,8 @@ class AdminState(StatesGroup):
     waiting_for_fbot_username = State()
     waiting_for_fbot_duration = State()
     waiting_for_admin_pin = State()
+    waiting_for_mt_reason = State()
+    waiting_for_mt_duration = State()
 
 @router.message(Command("admin"))
 async def admin_panel(message: Message, state: FSMContext):
@@ -229,11 +231,88 @@ async def admin_settings_menu(callback: CallbackQuery):
     await callback.message.edit_text("⚙️ *Pengaturan Umum*", reply_markup=inline.general_settings_keyboard(mt_status), parse_mode="Markdown")
 
 @router.callback_query(F.data == "toggle_mt")
-async def toggle_mt(callback: CallbackQuery):
+async def toggle_mt(callback: CallbackQuery, state: FSMContext):
     mt_status = await db.get_setting("maintenance")
-    new_status = "0" if mt_status == "1" else "1"
-    await db.set_setting("maintenance", new_status)
+    if mt_status == "1":
+        reason = await db.get_setting("maintenance_reason")
+        end_time = await db.get_setting("maintenance_end_time")
+        
+        info = "🚧 *Maintenance Sedang Berjalan*\n\n"
+        info += f"📝 Alasan: {reason if reason else 'Tidak ada'}\n"
+        info += f"🕒 Berakhir: {end_time if end_time else 'Tanpa batas waktu'}\n\n"
+        info += "Pilih aksi di bawah ini:"
+        
+        await callback.message.edit_text(info, reply_markup=inline.mt_active_keyboard(), parse_mode="Markdown")
+    else:
+        await ask_mt_reason(callback, state)
+
+async def ask_mt_reason(callback: CallbackQuery, state: FSMContext):
+    await callback.message.edit_text(
+        "📝 Masukkan alasan maintenance.\n\n"
+        "Contoh:\n"
+        "- Pembaruan sistem\n"
+        "- Perbaikan bug\n"
+        "- Maintenance server\n"
+        "- Upgrade fitur\n\n"
+        "Ketik \"/batal\" untuk membatalkan.",
+        reply_markup=inline.cancel_keyboard()
+    )
+    await state.set_state(AdminState.waiting_for_mt_reason)
+
+@router.callback_query(F.data == "update_mt")
+async def update_mt(callback: CallbackQuery, state: FSMContext):
+    await ask_mt_reason(callback, state)
+
+@router.callback_query(F.data == "disable_mt")
+async def disable_mt(callback: CallbackQuery):
+    await db.set_setting("maintenance", "0")
+    await db.set_setting("maintenance_reason", "")
+    await db.set_setting("maintenance_end_time", "")
+    await callback.message.answer("✅ Maintenance berhasil dinonaktifkan.")
     await admin_settings_menu(callback)
+
+@router.message(AdminState.waiting_for_mt_reason)
+async def ask_mt_duration(message: Message, state: FSMContext):
+    if message.text == "/batal":
+        await state.clear()
+        await message.answer("Dibatalkan.", reply_markup=inline.InlineKeyboardMarkup(inline_keyboard=[[inline.InlineKeyboardButton(text="🔙 Kembali", callback_data="admin_settings")]]))
+        return
+        
+    reason = message.text.strip()
+    if not reason:
+        await message.answer("❌ Alasan tidak boleh kosong. Silakan masukkan alasan maintenance:")
+        return
+        
+    await state.update_data(mt_reason=reason)
+    
+    await message.answer(
+        "⏳ Pilih durasi maintenance:",
+        reply_markup=inline.mt_duration_keyboard()
+    )
+    await state.set_state(AdminState.waiting_for_mt_duration)
+
+@router.callback_query(AdminState.waiting_for_mt_duration, F.data.startswith("mt_dur_"))
+async def set_mt_duration(callback: CallbackQuery, state: FSMContext):
+    duration_hours = int(callback.data.split("_")[2])
+    data = await state.get_data()
+    reason = data.get("mt_reason", "Perbaikan sistem")
+    
+    end_time_str = ""
+    if duration_hours > 0:
+        import datetime
+        end_time = datetime.datetime.now() + datetime.timedelta(hours=duration_hours)
+        end_time_str = end_time.strftime("%Y-%m-%d %H:%M:%S")
+        
+    await db.set_setting("maintenance", "1")
+    await db.set_setting("maintenance_reason", reason)
+    await db.set_setting("maintenance_end_time", end_time_str)
+    
+    await state.clear()
+    
+    await callback.message.edit_text(
+        "✅ Maintenance berhasil diaktifkan.",
+        reply_markup=inline.InlineKeyboardMarkup(inline_keyboard=[[inline.InlineKeyboardButton(text="🔙 Kembali", callback_data="admin_settings")]])
+    )
 
 @router.callback_query(F.data == "admin_prefix")
 async def ask_prefix(callback: CallbackQuery, state: FSMContext):
@@ -372,30 +451,37 @@ async def toggle_badwords(callback: CallbackQuery):
 
 @router.callback_query(F.data == "add_badword")
 async def ask_add_badword(callback: CallbackQuery, state: FSMContext):
-    await callback.message.edit_text("Kirimkan kata kasar yang ingin ditambahkan:", reply_markup=inline.cancel_keyboard())
+    await callback.message.edit_text("Kirimkan kata kasar yang ingin ditambahkan (pisahkan dengan koma jika lebih dari satu, contoh: bodoh,jelek):", reply_markup=inline.cancel_keyboard())
     await state.set_state(AdminState.waiting_for_add_badword)
 
 @router.message(AdminState.waiting_for_add_badword)
 async def do_add_badword(message: Message, state: FSMContext):
-    word = message.text.strip().lower()
-    success = await db.add_badword(word)
+    words = [w.strip().lower() for w in message.text.split(",") if w.strip()]
+    added_count = 0
+    for word in words:
+        success = await db.add_badword(word)
+        if success:
+            added_count += 1
+            
     await state.clear()
-    if success:
-        await message.answer("✅ Kata berhasil ditambahkan!", reply_markup=inline.InlineKeyboardMarkup(inline_keyboard=[[inline.InlineKeyboardButton(text="🔙 Kembali", callback_data="rule_badwords")]]))
+    if added_count > 0:
+        await message.answer(f"✅ {added_count} kata berhasil ditambahkan!", reply_markup=inline.InlineKeyboardMarkup(inline_keyboard=[[inline.InlineKeyboardButton(text="🔙 Kembali", callback_data="rule_badwords")]]))
     else:
-        await message.answer("❌ Kata sudah ada di daftar.", reply_markup=inline.InlineKeyboardMarkup(inline_keyboard=[[inline.InlineKeyboardButton(text="🔙 Kembali", callback_data="rule_badwords")]]))
+        await message.answer("❌ Tidak ada kata baru yang ditambahkan (mungkin kata tersebut sudah ada atau input kosong).", reply_markup=inline.InlineKeyboardMarkup(inline_keyboard=[[inline.InlineKeyboardButton(text="🔙 Kembali", callback_data="rule_badwords")]]))
 
 @router.callback_query(F.data == "del_badword")
 async def ask_del_badword(callback: CallbackQuery, state: FSMContext):
-    await callback.message.edit_text("Kirimkan kata kasar yang ingin dihapus:", reply_markup=inline.cancel_keyboard())
+    await callback.message.edit_text("Kirimkan kata kasar yang ingin dihapus (pisahkan dengan koma jika lebih dari satu):", reply_markup=inline.cancel_keyboard())
     await state.set_state(AdminState.waiting_for_del_badword)
 
 @router.message(AdminState.waiting_for_del_badword)
 async def do_del_badword(message: Message, state: FSMContext):
-    word = message.text.strip().lower()
-    await db.remove_badword(word)
+    words = [w.strip().lower() for w in message.text.split(",") if w.strip()]
+    for word in words:
+        await db.remove_badword(word)
+        
     await state.clear()
-    await message.answer("✅ Kata berhasil dihapus (jika ada).", reply_markup=inline.InlineKeyboardMarkup(inline_keyboard=[[inline.InlineKeyboardButton(text="🔙 Kembali", callback_data="rule_badwords")]]))
+    await message.answer(f"✅ {len(words)} kata berhasil dihapus (jika ada).", reply_markup=inline.InlineKeyboardMarkup(inline_keyboard=[[inline.InlineKeyboardButton(text="🔙 Kembali", callback_data="rule_badwords")]]))
 
 @router.callback_query(F.data == "list_badwords")
 async def list_badwords(callback: CallbackQuery):

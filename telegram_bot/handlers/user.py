@@ -85,6 +85,46 @@ async def on_user_leave_channel(chat_member_updated: ChatMemberUpdated):
     else:
         logging.info(f"[FORCESUB CHECK]\nuser_id={user_id}\nchannel_id={chat_member_updated.chat.id}\nstatus={status}")
         
+async def send_maintenance_message(message: Message, bot_name: str = "NAMA BOT"):
+    end_time = await db.get_setting("maintenance_end_time")
+    reason = await db.get_setting("maintenance_reason")
+    
+    if not reason:
+        reason = "Pembaruan sistem"
+        
+    if end_time:
+        import datetime
+        try:
+            dt = datetime.datetime.strptime(end_time, "%Y-%m-%d %H:%M:%S")
+            months = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"]
+            time_str = f"{dt.day} {months[dt.month-1]} {dt.year} • {dt.strftime('%H:%M:%S')}"
+        except:
+            time_str = end_time
+    else:
+        time_str = "Belum ditentukan"
+        
+    try:
+        b_name = (await message.bot.get_me()).first_name
+        if b_name: bot_name = b_name.upper()
+    except:
+        pass
+        
+    msg = (
+        f"╭─〔 🤖 {bot_name} 〕\n"
+        f"│\n"
+        f"├ 🚧 Status:\n"
+        f"│   Maintenance\n"
+        f"│\n"
+        f"├ 🕒 Aktif kembali:\n"
+        f"│   {time_str}\n"
+        f"│\n"
+        f"├ 📝 Alasan:\n"
+        f"│   {reason}\n"
+        f"│\n"
+        f"╰ Mohon maaf atas ketidaknyamanannya."
+    )
+    await message.answer(msg)
+
 @router.message(CommandStart(), F.chat.type == "private")
 async def cmd_start(message: Message):
     user_id = message.from_user.id
@@ -93,7 +133,7 @@ async def cmd_start(message: Message):
     
     maintenance = await db.get_setting("maintenance")
     if maintenance == "1" and user_id not in OWNER_IDS:
-        await message.answer("🚧 Bot sedang dalam masa perbaikan (maintenance). Silakan coba lagi nanti.")
+        await send_maintenance_message(message)
         return
 
     welcome_msg = await db.get_setting("welcome_msg")
@@ -103,6 +143,11 @@ async def cmd_start(message: Message):
 async def verify_fs(callback: CallbackQuery):
     user_id = callback.from_user.id
     
+    maintenance = await db.get_setting("maintenance")
+    if maintenance == "1" and user_id not in OWNER_IDS:
+        await callback.answer("🚧 Bot sedang dalam masa perbaikan (maintenance).", show_alert=True)
+        return
+        
     fs_status = await db.get_setting("force_sub")
     channels = await db.get_fs_channels()
 
@@ -179,6 +224,12 @@ async def verify_fs(callback: CallbackQuery):
 @router.callback_query(F.data == "verify_bot")
 async def handle_verify_bot(callback: CallbackQuery):
     user_id = callback.from_user.id
+    
+    maintenance = await db.get_setting("maintenance")
+    if maintenance == "1" and user_id not in OWNER_IDS:
+        await callback.answer("🚧 Bot sedang dalam masa perbaikan (maintenance).", show_alert=True)
+        return
+        
     verified_at = await db.get_bot_verification(user_id)
     
     fbot_duration_str = await db.get_setting("force_bot_duration")
@@ -216,7 +267,7 @@ async def process_menfess(message: Message):
         
     maintenance = await db.get_setting("maintenance")
     if maintenance == "1" and user_id not in OWNER_IDS:
-        await message.answer("🚧 Bot sedang dalam masa perbaikan (maintenance).")
+        await send_maintenance_message(message)
         return
 
     prefix_setting = await db.get_setting("prefix")

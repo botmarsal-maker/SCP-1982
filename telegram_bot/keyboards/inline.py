@@ -68,6 +68,24 @@ def cancel_keyboard() -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="Batal", callback_data="cancel_action")]
     ])
 
+def mt_active_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔄 Perbarui Alasan & Durasi", callback_data="update_mt")],
+        [InlineKeyboardButton(text="✅ Nonaktifkan Maintenance", callback_data="disable_mt")],
+        [InlineKeyboardButton(text="🔙 Kembali", callback_data="admin_settings")]
+    ])
+
+def mt_duration_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="1 Jam", callback_data="mt_dur_1"),
+         InlineKeyboardButton(text="3 Jam", callback_data="mt_dur_3")],
+        [InlineKeyboardButton(text="6 Jam", callback_data="mt_dur_6"),
+         InlineKeyboardButton(text="12 Jam", callback_data="mt_dur_12")],
+        [InlineKeyboardButton(text="24 Jam", callback_data="mt_dur_24"),
+         InlineKeyboardButton(text="Tanpa Batas Waktu", callback_data="mt_dur_0")],
+        [InlineKeyboardButton(text="Batal", callback_data="cancel_action")]
+    ])
+
 def confirm_broadcast_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="✅ Konfirmasi Broadcast", callback_data="confirm_broadcast")],
