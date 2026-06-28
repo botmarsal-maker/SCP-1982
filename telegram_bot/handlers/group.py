@@ -49,7 +49,7 @@ async def handle_comment(message: Message):
     comment_text = message.text or message.caption or "Media (Foto/Video/Dokumen/Stiker)"
     
     post_url = get_message_url(CHANNEL_ID, channel_msg_id)
-    comment_url = get_message_url(message.chat.id, message.message_id)
+    comment_url = f"{post_url}?comment={message.message_id}"
     
     import html
     name_escaped = html.escape(name)
