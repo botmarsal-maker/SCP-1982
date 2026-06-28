@@ -30,13 +30,10 @@ async def handle_comment(message: Message):
     channel_msg_id = origin.message_id
     
     # Filter notifikasi (Fitur 5)
-    if message.from_user.is_bot:
+    if message.from_user and message.from_user.is_bot:
         return
         
-    if message.from_user.id in OWNER_IDS:
-        return
-        
-    if message.from_user.id == 777000: # Anonymous Telegram system
+    if message.from_user and message.from_user.id == 777000: # Anonymous Telegram system
         return
         
     menfess_owner_id = await db.get_menfess_owner(channel_msg_id)
@@ -44,20 +41,24 @@ async def handle_comment(message: Message):
         return
         
     # Jangan kirim notif jika komentator adalah pemilik menfess itu sendiri
-    if message.from_user.id == menfess_owner_id:
+    if message.from_user and message.from_user.id == menfess_owner_id:
         return
         
     # Format notifikasi (Fitur 3 & 4)
-    name = message.from_user.full_name
+    name = message.from_user.full_name if message.from_user else (message.sender_chat.title if message.sender_chat else "Anonim")
     comment_text = message.text or message.caption or "Media (Foto/Video/Dokumen/Stiker)"
     
     post_url = get_message_url(CHANNEL_ID, channel_msg_id)
     comment_url = get_message_url(message.chat.id, message.message_id)
     
+    import html
+    name_escaped = html.escape(name)
+    comment_text_escaped = html.escape(comment_text)
+    
     notif_text = (
-        f"💬 *Menfess kamu mendapat komentar baru!*\n\n"
-        f"👤 *Dari:*\n{name}\n\n"
-        f"📝 *Komentar:*\n{comment_text}"
+        f"💬 <b>Menfess kamu mendapat komentar baru!</b>\n\n"
+        f"👤 <b>Dari:</b>\n{name_escaped}\n\n"
+        f"📝 <b>Komentar:</b>\n{comment_text_escaped}"
     )
     
     try:
@@ -65,7 +66,7 @@ async def handle_comment(message: Message):
             chat_id=menfess_owner_id,
             text=notif_text,
             reply_markup=inline.comment_notif_keyboard(post_url, comment_url),
-            parse_mode="Markdown"
+            parse_mode="HTML"
         )
     except Exception as e:
         logging.error(f"Gagal mengirim notif komentar ke {menfess_owner_id}: {e}")

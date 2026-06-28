@@ -237,7 +237,12 @@ async def toggle_mt(callback: CallbackQuery):
 
 @router.callback_query(F.data == "admin_prefix")
 async def ask_prefix(callback: CallbackQuery, state: FSMContext):
-    await callback.message.edit_text("Kirimkan teks/emoji untuk prefix baru:", reply_markup=inline.cancel_keyboard())
+    prefix = await db.get_setting("prefix")
+    await callback.message.edit_text(
+        f"Kirimkan teks/emoji untuk prefix baru (pisahkan dengan koma jika lebih dari satu).\n\nPrefix saat ini: `{prefix}`", 
+        reply_markup=inline.cancel_keyboard(),
+        parse_mode="Markdown"
+    )
     await state.set_state(AdminState.waiting_for_prefix)
 
 @router.message(AdminState.waiting_for_prefix)

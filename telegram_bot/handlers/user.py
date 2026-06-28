@@ -219,14 +219,26 @@ async def process_menfess(message: Message):
         await message.answer("🚧 Bot sedang dalam masa perbaikan (maintenance).")
         return
 
-    prefix = await db.get_setting("prefix")
+    prefix_setting = await db.get_setting("prefix")
+    prefixes = [p.strip().lower() for p in prefix_setting.split(",") if p.strip()]
+    if not prefixes:
+        prefixes = ["🚀"] # fallback
+        
     content = ""
     msg_type = "text"
     
     # Validasi Prefix (Pesan harus diawali dengan prefix secara manual oleh pengguna)
     user_text = message.text or message.caption or ""
-    if not user_text.strip().lower().startswith(prefix.lower()):
-        await message.answer(f"❌ *Pesan Ditolak!*\n\nPesan kamu harus diawali dengan prefix: `{prefix}`", parse_mode="Markdown")
+    
+    starts_with_prefix = False
+    for p in prefixes:
+        if user_text.strip().lower().startswith(p):
+            starts_with_prefix = True
+            break
+            
+    if not starts_with_prefix:
+        formatted_prefixes = " atau ".join([f"`{p}`" for p in prefixes])
+        await message.answer(f"❌ *Pesan Ditolak!*\n\nPesan kamu harus diawali dengan prefix: {formatted_prefixes}", parse_mode="Markdown")
         return
         
     # --- VALIDASI ATURAN ---
