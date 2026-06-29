@@ -7,14 +7,19 @@ import logging
 
 router = Router()
 
-def get_message_url(chat_id: str | int, message_id: int) -> str:
+def get_message_url(chat_id: str | int, message_id: int, thread_id: int = None) -> str:
     chat_id_str = str(chat_id)
+    url = ""
     if chat_id_str.startswith("@"):
-        return f"https://t.me/{chat_id_str[1:]}/{message_id}"
+        url = f"https://t.me/{chat_id_str[1:]}/{message_id}"
     elif chat_id_str.startswith("-100"):
-        return f"https://t.me/c/{chat_id_str[4:]}/{message_id}"
+        url = f"https://t.me/c/{chat_id_str[4:]}/{message_id}"
     else:
-        return f"https://t.me/c/{chat_id_str.strip('-')}/{message_id}"
+        url = f"https://t.me/c/{chat_id_str.strip('-')}/{message_id}"
+        
+    if thread_id:
+        url += f"?thread={thread_id}"
+    return url
 
 @router.message(F.chat.type.in_({"group", "supergroup"}))
 async def handle_comment(message: Message):
@@ -49,7 +54,8 @@ async def handle_comment(message: Message):
     comment_text = message.text or message.caption or "Media (Foto/Video/Dokumen/Stiker)"
     
     post_url = get_message_url(CHANNEL_ID, channel_msg_id)
-    comment_url = f"{post_url}?comment={message.message_id}"
+    thread_id = message.reply_to_message.message_id
+    comment_url = get_message_url(message.chat.id, message.message_id, thread_id)
     
     import html
     name_escaped = html.escape(name)

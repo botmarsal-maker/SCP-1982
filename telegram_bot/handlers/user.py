@@ -145,7 +145,8 @@ async def verify_fs(callback: CallbackQuery):
     
     maintenance = await db.get_setting("maintenance")
     if maintenance == "1" and user_id not in OWNER_IDS:
-        await callback.answer("🚧 Bot sedang dalam masa perbaikan (maintenance).", show_alert=True)
+        await callback.answer("Maintenance aktif", show_alert=False)
+        await send_maintenance_message(callback.message)
         return
         
     fs_status = await db.get_setting("force_sub")
@@ -227,7 +228,8 @@ async def handle_verify_bot(callback: CallbackQuery):
     
     maintenance = await db.get_setting("maintenance")
     if maintenance == "1" and user_id not in OWNER_IDS:
-        await callback.answer("🚧 Bot sedang dalam masa perbaikan (maintenance).", show_alert=True)
+        await callback.answer("Maintenance aktif", show_alert=False)
+        await send_maintenance_message(callback.message)
         return
         
     verified_at = await db.get_bot_verification(user_id)
